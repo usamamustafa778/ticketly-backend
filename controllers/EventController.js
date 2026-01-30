@@ -1,0 +1,690 @@
+const EventModel = require("../models/EventModel");
+const UserModel = require("../models/UserModel");
+
+// Helper function to format event image URLs (returns both relative and full URL)
+// Similar to profile images (profileImage + profileImageUrl) and payment images (screenshotUrl + paymentScreenshotUrl)
+// Uses same base URL logic as profile images: process.env.BASE_URL || http://localhost:${PORT || 5001}
+const formatEventImage = (imagePath) => {
+  // Use same base URL construction as profile images
+  const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5001}`;
+
+  if (!imagePath || imagePath === "") {
+    return {
+      image: null,
+      imageUrl: null,
+    };
+  }
+
+  // If it's already a full URL, extract the relative path and reconstruct with current baseUrl
+  if (imagePath.startsWith("http://") || imagePath.startsWith("https://")) {
+    try {
+      const url = new URL(imagePath);
+      const relativePath = url.pathname;
+      // Reconstruct URL using current baseUrl (same as profile images)
+      return {
+        image: relativePath,
+        imageUrl: `${baseUrl}${relativePath}`,
+      };
+    } catch {
+      // If URL parsing fails, treat as relative path
+      return {
+        image: imagePath,
+        imageUrl: `${baseUrl}${imagePath}`,
+      };
+    }
+  }
+
+  // If it's a relative path (starts with /uploads/), construct full URL using same baseUrl as profile
+  if (imagePath.startsWith("/uploads/")) {
+    return {
+      image: imagePath,
+      imageUrl: `${baseUrl}${imagePath}`,
+    };
+  }
+
+  // Otherwise return as is (could be external URL or empty)
+  return {
+    image: imagePath,
+    imageUrl: imagePath,
+  };
+};
+
+// ==================== CREATE EVENT ====================
+const createEvent = async (req, res) => {
+  try {
+    const {
+      title,
+      description,
+      date,
+      time,
+      location,
+      image,
+      email,
+      phone,
+      ticketPrice,
+      totalTickets,
+    } = req.body;
+
+    // Create event with status = "pending"
+    const event = new EventModel({
+      title,
+      description,
+      date,
+      time,
+      location,
+      image: image || "",
+      email,
+      phone,
+      ticketPrice,
+      totalTickets,
+      status: "pending",
+      createdBy: req.userId,
+    });
+
+    await event.save();
+
+    // Add event to user's createdEvents array
+    const user = await UserModel.findById(req.userId);
+    if (user) {
+      // Convert to strings for comparison
+      const createdEventIds = user.createdEvents.map((id) => id.toString());
+      const eventIdStr = event._id.toString();
+
+      if (!createdEventIds.includes(eventIdStr)) {
+        user.createdEvents.push(event._id);
+        await user.save();
+      }
+    }
+
+    const eventImage = formatEventImage(event.image);
+
+    return res.status(201).json({
+      success: true,
+      message: "Your request has been sent. We will contact you shortly.",
+      event: {
+        id: event._id,
+        title: event.title,
+        description: event.description,
+        date: event.date,
+        time: event.time,
+        location: event.location,
+        image: eventImage.image,
+        imageUrl: eventImage.imageUrl,
+        email: event.email,
+        phone: event.phone,
+        ticketPrice: event.ticketPrice,
+        totalTickets: event.totalTickets,
+        status: event.status,
+        createdAt: event.createdAt,
+        updatedAt: event.updatedAt,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Error creating event",
+      error: error.message,
+    });
+  }
+};
+
+// Helper to format user profile image URL for joinedUsers
+const formatProfileImageUrl = (profileImage) => {
+  const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5001}`;
+  if (!profileImage || profileImage === "") return null;
+  if (profileImage.startsWith("http://") || profileImage.startsWith("https://")) return profileImage;
+  return profileImage.startsWith("/") ? `${baseUrl}${profileImage}` : `${baseUrl}/${profileImage}`;
+};
+
+// ==================== GET ALL APPROVED EVENTS (PUBLIC) ====================
+const getApprovedEvents = async (req, res) => {
+  try {
+    // Return ONLY approved events with limited fields for explore page
+    const events = await EventModel.find({ status: "approved" })
+      .select(
+        "title description date time location image ticketPrice totalTickets createdAt createdBy"
+      )
+      .sort({ createdAt: -1 })
+      .populate("createdBy", "fullName username email")
+      .lean();
+
+    const eventIds = events.map((e) => e._id);
+
+    // Users who joined any of these events (joinedEvents stores event IDs)
+    const usersWhoJoined = await UserModel.find({ joinedEvents: { $in: eventIds } })
+      .select("fullName username profileImage joinedEvents")
+      .lean();
+
+    const joinedByEventId = {};
+    eventIds.forEach((id) => (joinedByEventId[id.toString()] = []));
+    for (const user of usersWhoJoined) {
+      const profileImageUrl = formatProfileImageUrl(user.profileImage);
+      const userInfo = {
+        _id: user._id,
+        fullName: user.fullName || user.username || "User",
+        name: user.fullName || user.username || "User",
+        profileImageUrl: profileImageUrl || null,
+      };
+      const joinedIds = (user.joinedEvents || []).map((id) => id.toString());
+      joinedIds.forEach((eid) => {
+        if (joinedByEventId[eid]) joinedByEventId[eid].push(userInfo);
+      });
+    }
+
+    // Format image URLs (both relative and full URL) and attach joinedUsers
+    const formattedEvents = events.map((event) => {
+      const joinedUsers = joinedByEventId[event._id.toString()] || [];
+      try {
+        const eventImage = formatEventImage(event.image || "");
+        return {
+          _id: event._id,
+          title: event.title,
+          description: event.description || "",
+          date: event.date,
+          time: event.time,
+          location: event.location,
+          image: eventImage.image,
+          imageUrl: eventImage.imageUrl,
+          ticketPrice: event.ticketPrice,
+          totalTickets: event.totalTickets,
+          createdAt: event.createdAt,
+          createdBy: event.createdBy || null,
+          joinedUsers,
+          joinedCount: joinedUsers.length,
+        };
+      } catch (formatError) {
+        console.error("Error formatting event:", formatError);
+        return {
+          _id: event._id,
+          title: event.title,
+          description: event.description || "",
+          date: event.date,
+          time: event.time,
+          location: event.location,
+          image: null,
+          imageUrl: null,
+          ticketPrice: event.ticketPrice,
+          totalTickets: event.totalTickets,
+          createdAt: event.createdAt,
+          createdBy: event.createdBy || null,
+          joinedUsers,
+          joinedCount: joinedUsers.length,
+        };
+      }
+    });
+
+    return res.status(200).json({
+      success: true,
+      count: formattedEvents.length,
+      events: formattedEvents,
+    });
+  } catch (error) {
+    console.error("Error in getApprovedEvents:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error fetching events",
+      error: process.env.NODE_ENV === "development" ? error.message : "Internal server error",
+    });
+  }
+};
+
+// ==================== GET MY EVENTS ====================
+const getMyEvents = async (req, res) => {
+  try {
+    // Return events created by logged-in user (include status for profile view)
+    const events = await EventModel.find({ createdBy: req.userId })
+      .sort({ createdAt: -1 })
+      .populate("createdBy", "fullName username email");
+
+    const eventIds = events.map((e) => e._id);
+    const usersWhoJoined = await UserModel.find({ joinedEvents: { $in: eventIds } })
+      .select("fullName username profileImage joinedEvents")
+      .lean();
+    const joinedByEventId = {};
+    eventIds.forEach((id) => (joinedByEventId[id.toString()] = []));
+    for (const user of usersWhoJoined) {
+      const userInfo = {
+        _id: user._id,
+        fullName: user.fullName || user.username || "User",
+        name: user.fullName || user.username || "User",
+        profileImageUrl: formatProfileImageUrl(user.profileImage) || null,
+      };
+      (user.joinedEvents || []).forEach((eid) => {
+        const eidStr = eid.toString();
+        if (joinedByEventId[eidStr]) joinedByEventId[eidStr].push(userInfo);
+      });
+    }
+
+    const formattedEvents = events.map((event) => {
+      const eventImage = formatEventImage(event.image);
+      const joinedUsers = joinedByEventId[event._id.toString()] || [];
+      return {
+        id: event._id,
+        title: event.title,
+        description: event.description,
+        date: event.date,
+        time: event.time,
+        location: event.location,
+        image: eventImage.image,
+        imageUrl: eventImage.imageUrl,
+        email: event.email,
+        phone: event.phone,
+        ticketPrice: event.ticketPrice,
+        totalTickets: event.totalTickets,
+        status: event.status,
+        createdBy: event.createdBy,
+        createdAt: event.createdAt,
+        updatedAt: event.updatedAt,
+        joinedUsers,
+        joinedCount: joinedUsers.length,
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      count: formattedEvents.length,
+      events: formattedEvents,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Error fetching your events",
+      error: error.message,
+    });
+  }
+};
+
+// ==================== GET EVENT BY ID (PUBLIC) ====================
+const getEventById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const event = await EventModel.findById(id).populate(
+      "createdBy",
+      "fullName username email role"
+    );
+
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: "Event not found",
+      });
+    }
+
+    // Users who joined this event
+    const usersWhoJoined = await UserModel.find({ joinedEvents: event._id })
+      .select("fullName username profileImage")
+      .lean();
+    const joinedUsers = usersWhoJoined.map((u) => ({
+      _id: u._id,
+      fullName: u.fullName || u.username || "User",
+      name: u.fullName || u.username || "User",
+      profileImageUrl: formatProfileImageUrl(u.profileImage) || null,
+    }));
+
+    // Format event image URLs
+    const eventImage = formatEventImage(event.image);
+
+    // Public endpoint - anyone can view any event by ID
+    return res.status(200).json({
+      success: true,
+      event: {
+        id: event._id,
+        title: event.title,
+        description: event.description,
+        date: event.date,
+        time: event.time,
+        location: event.location,
+        image: eventImage.image,
+        imageUrl: eventImage.imageUrl,
+        email: event.email,
+        phone: event.phone,
+        ticketPrice: event.ticketPrice,
+        totalTickets: event.totalTickets,
+        status: event.status,
+        createdBy: event.createdBy,
+        createdAt: event.createdAt,
+        updatedAt: event.updatedAt,
+        joinedUsers,
+        joinedCount: joinedUsers.length,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Error fetching event",
+      error: error.message,
+    });
+  }
+};
+
+// ==================== UPDATE EVENT ====================
+const updateEvent = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      title,
+      description,
+      date,
+      time,
+      location,
+      image,
+      email,
+      phone,
+      ticketPrice,
+      totalTickets,
+    } = req.body;
+
+    const event = await EventModel.findById(id);
+
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: "Event not found",
+      });
+    }
+
+    // Check if user is owner or admin
+    const user = await UserModel.findById(req.userId);
+    const isOwner = event.createdBy.toString() === req.userId;
+    const isAdmin = user && user.role === "admin";
+
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "Access denied. Only event owner or admin can update this event.",
+      });
+    }
+
+    // Update fields
+    const updateData = {};
+    if (title) updateData.title = title;
+    if (description) updateData.description = description;
+    if (date) updateData.date = date;
+    if (time) updateData.time = time;
+    if (location) updateData.location = location;
+    if (image !== undefined) updateData.image = image;
+    if (email) updateData.email = email;
+    if (phone) updateData.phone = phone;
+    if (ticketPrice !== undefined) updateData.ticketPrice = ticketPrice;
+    if (totalTickets !== undefined) updateData.totalTickets = totalTickets;
+
+    const updatedEvent = await EventModel.findByIdAndUpdate(
+      id,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    ).populate("createdBy", "fullName username email");
+
+    // Format event image URLs
+    const eventImage = formatEventImage(updatedEvent.image);
+
+    return res.status(200).json({
+      success: true,
+      message: "Event updated successfully",
+      event: {
+        id: updatedEvent._id,
+        title: updatedEvent.title,
+        description: updatedEvent.description,
+        date: updatedEvent.date,
+        time: updatedEvent.time,
+        location: updatedEvent.location,
+        image: eventImage.image,
+        imageUrl: eventImage.imageUrl,
+        email: updatedEvent.email,
+        phone: updatedEvent.phone,
+        ticketPrice: updatedEvent.ticketPrice,
+        totalTickets: updatedEvent.totalTickets,
+        status: updatedEvent.status,
+        createdBy: updatedEvent.createdBy,
+        createdAt: updatedEvent.createdAt,
+        updatedAt: updatedEvent.updatedAt,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Error updating event",
+      error: error.message,
+    });
+  }
+};
+
+// ==================== DELETE EVENT ====================
+const deleteEvent = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const event = await EventModel.findById(id);
+
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: "Event not found",
+      });
+    }
+
+    // Check if user is owner or admin
+    const user = await UserModel.findById(req.userId);
+    const isOwner = event.createdBy.toString() === req.userId;
+    const isAdmin = user && user.role === "admin";
+
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "Access denied. Only event owner or admin can delete this event.",
+      });
+    }
+
+    // Hard delete
+    await EventModel.findByIdAndDelete(id);
+
+    return res.status(200).json({
+      success: true,
+      message: "Event deleted successfully",
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Error deleting event",
+      error: error.message,
+    });
+  }
+};
+
+// ==================== GET PENDING EVENTS (ADMIN ONLY) ====================
+const getPendingEvents = async (req, res) => {
+  try {
+    // Return all pending events
+    const events = await EventModel.find({ status: "pending" })
+      .sort({ createdAt: -1 })
+      .populate("createdBy", "fullName username email phone");
+
+    const formattedEvents = events.map((event) => {
+      const eventImage = formatEventImage(event.image);
+      return {
+        id: event._id,
+        title: event.title,
+        description: event.description,
+        date: event.date,
+        time: event.time,
+        location: event.location,
+        image: eventImage.image,
+        imageUrl: eventImage.imageUrl,
+        email: event.email,
+        phone: event.phone,
+        ticketPrice: event.ticketPrice,
+        totalTickets: event.totalTickets,
+        status: event.status,
+        createdBy: event.createdBy,
+        createdAt: event.createdAt,
+        updatedAt: event.updatedAt,
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      count: formattedEvents.length,
+      events: formattedEvents,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Error fetching pending events",
+      error: error.message,
+    });
+  }
+};
+
+// ==================== APPROVE EVENT (ADMIN ONLY) ====================
+const approveEvent = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const event = await EventModel.findById(id).populate("createdBy");
+
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: "Event not found",
+      });
+    }
+
+    if (event.status === "approved") {
+      return res.status(400).json({
+        success: false,
+        message: "Event is already approved",
+      });
+    }
+
+    // Update event status to "approved"
+    event.status = "approved";
+    await event.save();
+
+    // Update user role to "organizer" if not already admin
+    const creator = await UserModel.findById(event.createdBy._id);
+    if (creator && creator.role !== "admin") {
+      creator.role = "organizer";
+      await creator.save();
+    }
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "Event approved successfully. Creator has been assigned organizer role.",
+      event: {
+        id: event._id,
+        title: event.title,
+        status: event.status,
+        createdBy: {
+          id: creator._id,
+          fullName: creator.fullName,
+          email: creator.email,
+          role: creator.role,
+        },
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Error approving event",
+      error: error.message,
+    });
+  }
+};
+
+// ==================== UPLOAD EVENT IMAGE ====================
+const uploadEventImage = async (req, res) => {
+  try {
+    // Log request details for debugging
+    console.log("========================================");
+    console.log("Upload image request received");
+    console.log("========================================");
+    console.log("Headers:", {
+      "content-type": req.headers["content-type"],
+      "content-length": req.headers["content-length"],
+      authorization: req.headers["authorization"] ? "Present" : "Missing",
+    });
+    console.log("File:", req.file);
+    console.log("Files:", req.files);
+    console.log("Body:", req.body);
+    console.log("Body keys:", Object.keys(req.body || {}));
+    console.log("Body.image:", req.body?.image);
+    console.log("Request method:", req.method);
+    console.log("Request URL:", req.originalUrl);
+    console.log("========================================");
+
+    if (!req.file) {
+      console.error("❌ No file in request");
+      console.error("Multer received body:", JSON.stringify(req.body, null, 2));
+      console.error("Multer fieldname 'image':", req.body?.image);
+      console.error("Request headers content-type:", req.headers["content-type"]);
+      return res.status(400).json({
+        success: false,
+        message: "No image file provided. Please select an image file.",
+      });
+    }
+
+    // Create image URL (relative path that will be served statically)
+    // The server serves /uploads as static files, so the URL will be accessible
+    const imagePath = `/uploads/events/${req.file.filename}`;
+
+    // Get base URL for full image URL (same logic as profile image upload)
+    // Construct from request if BASE_URL not set (handles both HTTP and HTTPS)
+    let baseUrl = process.env.BASE_URL;
+    if (!baseUrl) {
+      const protocol = req.protocol || "http";
+      const host = req.get("host") || `localhost:${process.env.PORT || 5001}`;
+      baseUrl = `${protocol}://${host}`;
+    }
+    const fullImageUrl = `${baseUrl}${imagePath}`;
+
+    // Format event image URLs (both relative and full URL)
+    const eventImage = {
+      image: imagePath,
+      imageUrl: fullImageUrl,
+    };
+
+    console.log("✅ Image uploaded successfully:");
+    console.log("  - Filename:", req.file.filename);
+    console.log("  - Original name:", req.file.originalname);
+    console.log("  - MIME type:", req.file.mimetype);
+    console.log("  - Size:", req.file.size, "bytes");
+    console.log("  - Relative path:", eventImage.image);
+    console.log("  - Full URL:", eventImage.imageUrl);
+    console.log("========================================");
+
+    return res.status(200).json({
+      success: true,
+      message: "Image uploaded successfully",
+      image: eventImage.image,
+      imageUrl: eventImage.imageUrl,
+    });
+  } catch (error) {
+    console.error("❌ Error uploading event image:", {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+      userId: req.userId,
+    });
+    console.log("========================================");
+    return res.status(500).json({
+      success: false,
+      message: "Error uploading image. Please try again.",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+module.exports = {
+  createEvent,
+  getApprovedEvents,
+  getMyEvents,
+  getEventById,
+  updateEvent,
+  deleteEvent,
+  getPendingEvents,
+  approveEvent,
+  uploadEventImage,
+};
