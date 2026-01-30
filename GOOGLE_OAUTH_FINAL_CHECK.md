@@ -16,7 +16,7 @@
 3. **Check the EXACT Client ID shown** in the "Client ID" field
 4. **Compare character-by-character** with your `.env` file:
    ```
-   291795766813-35veuc6d2qaqsm6nbr6d3vv5lqaunte0.apps.googleusercontent.com
+   your_client_id_here.apps.googleusercontent.com
    ```
 5. **They must match EXACTLY** - even one character difference will cause this error
 
@@ -28,7 +28,7 @@
 
 1. Go to: https://console.cloud.google.com/apis/credentials/consent
 2. Check the status:
-   - If "Testing" mode: Make sure your email (`hamzaaliabbasi046@gmail.com`) is added as a test user
+   - If "Testing" mode: Make sure your email (`your_email@example.com`) is added as a test user
    - If "In production": Should work for all users
 3. Verify scopes are added: `email`, `profile`
 4. Make sure the app is published (if in Testing mode, you need test users)

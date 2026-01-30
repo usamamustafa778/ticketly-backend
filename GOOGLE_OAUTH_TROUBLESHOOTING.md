@@ -13,7 +13,7 @@ The OAuth client was not found.
 **This is the MOST COMMON issue!**
 
 1. Go to: https://console.cloud.google.com/apis/credentials
-2. Find your OAuth 2.0 Client ID: `291795766813-35veuc6d2qaqsm6nbr6d3vv5lqaunte0.apps.googleusercontent.com`
+2. Find your OAuth 2.0 Client ID (it will look like `your_client_id_here.apps.googleusercontent.com`)
 3. Click to edit it
 4. In **"Authorized redirect URIs"** section:
    - Click **"+ Add URI"**
@@ -38,7 +38,7 @@ The OAuth client was not found.
    cat .env | grep GOOGLE_CLIENT_ID
    ```
    
-2. Should be: `291795766813-35veuc6d2qaqsm6nbr6d3vv5lqaunte0.apps.googleusercontent.com`
+2. Should match the Client ID shown in Google Cloud Console exactly
 
 3. Verify in Google Cloud Console:
    - Go to: https://console.cloud.google.com/apis/credentials
