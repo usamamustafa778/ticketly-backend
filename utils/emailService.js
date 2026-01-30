@@ -1,14 +1,13 @@
 const nodemailer = require("nodemailer");
 
-// ⚠️ SECURITY NOTE: Hardcoded credentials for convenience
-// In production, consider using environment variables for better security
-const EMAIL_USER = "hamzaaliabbasi049@gmail.com";
-const EMAIL_PASS = "vjptllyvgmohtkxx";
+// Read credentials from environment variables (never hardcode secrets in git)
+const EMAIL_USER = process.env.EMAIL_USER || "";
+const EMAIL_PASS = process.env.EMAIL_PASS || "";
 
 // Check if email credentials are configured
 const isEmailConfigured = () => {
-  const hasUser = !!EMAIL_USER;
-  const hasPass = !!EMAIL_PASS;
+  const hasUser = !!EMAIL_USER.trim();
+  const hasPass = !!EMAIL_PASS.trim();
 
   // Log configuration status (helpful for Railway debugging)
   if (
@@ -114,9 +113,7 @@ if (isEmailConfigured()) {
   console.log(
     "⚠️  Email credentials not configured. OTP will be logged to console in development mode."
   );
-  console.log(
-    "💡 Update EMAIL_USER and EMAIL_PASS constants in emailService.js to enable email sending."
-  );
+  console.log("💡 Set EMAIL_USER and EMAIL_PASS in your environment to enable email sending.");
 }
 
 // Helper function to create a promise with timeout

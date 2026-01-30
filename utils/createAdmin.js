@@ -1,13 +1,21 @@
 const bcrypt = require("bcryptjs");
 const UserModel = require("../models/UserModel");
 
-// Hardcoded Admin credentials
-const ADMIN_EMAIL = "hamzaaliabbasi046@gmail.com";
-const ADMIN_PASSWORD = "Wish@123"; // Change this in production!
-const ADMIN_NAME = "Admin";
+// Admin seeding credentials (set via environment variables)
+// IMPORTANT: Never hardcode credentials in git.
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
+const ADMIN_NAME = process.env.ADMIN_NAME || "Admin";
 
 const createAdmin = async () => {
   try {
+    if (!ADMIN_EMAIL.trim() || !ADMIN_PASSWORD.trim()) {
+      console.log(
+        "ℹ️  Admin seeding skipped (set ADMIN_EMAIL and ADMIN_PASSWORD to enable)."
+      );
+      return;
+    }
+
     // Check if admin already exists
     const existingAdmin = await UserModel.findOne({
       email: ADMIN_EMAIL,
@@ -22,11 +30,8 @@ const createAdmin = async () => {
       existingAdmin.fullName = ADMIN_NAME;
       existingAdmin.name = ADMIN_NAME;
       await existingAdmin.save();
-      console.log(
-        "✅ Existing user updated to admin with hardcoded password"
-      );
+      console.log("✅ Existing user updated to admin");
       console.log(`   Email: ${ADMIN_EMAIL}`);
-      console.log(`   Password: ${ADMIN_PASSWORD}`);
       return;
     }
 
@@ -47,7 +52,6 @@ const createAdmin = async () => {
     await admin.save();
     console.log("✅ Admin created successfully");
     console.log(`   Email: ${ADMIN_EMAIL}`);
-    console.log(`   Password: ${ADMIN_PASSWORD}`);
     console.log("   ⚠️  Please change the password after first login!");
   } catch (error) {
     console.error("❌ Error creating admin:", error.message);
