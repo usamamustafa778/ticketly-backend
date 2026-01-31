@@ -75,27 +75,8 @@ const createTicket = async (req, res) => {
       });
     }
 
-    // Generate unique accessKey (ticket #) immediately
-    let accessKey = generateAccessKey();
-    let existingTicket = await TicketModel.findOne({ accessKey });
-    
-    // Ensure uniqueness (very rare collision, but handle it)
-    while (existingTicket) {
-      accessKey = generateAccessKey();
-      existingTicket = await TicketModel.findOne({ accessKey });
-    }
-
-    // Generate QR code for the accessKey
-    let qrCodeUrl = "";
-    try {
-      qrCodeUrl = await generateQRCode(accessKey);
-      console.log('✅ QR code generated:', qrCodeUrl);
-    } catch (qrError) {
-      console.error('⚠️ Failed to generate QR code:', qrError);
-      // Don't fail ticket creation if QR generation fails
-    }
-
-    // Create ticket with status = pending_payment, accessKey, and qrCodeUrl
+    // Don't generate accessKey or qrCodeUrl until ticket is confirmed
+    // These are only added when payment is verified (status -> confirmed)
     const ticket = new TicketModel({
       userId,
       eventId,
@@ -104,8 +85,6 @@ const createTicket = async (req, res) => {
       email,
       phone,
       status: "pending_payment",
-      accessKey: accessKey, // Generate ticket # immediately
-      qrCodeUrl: qrCodeUrl, // Store QR code URL
     });
 
     await ticket.save();
@@ -133,8 +112,6 @@ const createTicket = async (req, res) => {
         email: ticket.email,
         phone: ticket.phone,
         status: ticket.status,
-        accessKey: ticket.accessKey,
-        qrCodeUrl: qrCodeUrl || null, // Path only - client constructs full URL
         createdAt: ticket.createdAt,
       },
     });
@@ -164,7 +141,8 @@ const getMyTickets = async (req, res) => {
     const formattedTickets = tickets.map((ticket) => {
       // Return paths only - client constructs full URLs
       const paymentScreenshotUrl = toImagePath(ticket.paymentScreenshotUrl);
-      const qrCodeUrl = toImagePath(ticket.qrCodeUrl);
+      const qrCodeUrl = ticket.status === "confirmed" ? toImagePath(ticket.qrCodeUrl) : null;
+      const accessKey = ticket.status === "confirmed" ? ticket.accessKey : null;
 
       // Format event image URLs and attach joinedUsers
       const eventIdStr = ticket.eventId && (ticket.eventId._id || ticket.eventId).toString();
@@ -185,7 +163,7 @@ const getMyTickets = async (req, res) => {
         };
       }
 
-      return {
+      const out = {
         id: ticket._id,
         event: formattedEvent,
         organizer: ticket.organizerId,
@@ -193,12 +171,13 @@ const getMyTickets = async (req, res) => {
         email: ticket.email,
         phone: ticket.phone,
         status: ticket.status,
-        accessKey: ticket.accessKey,
-        qrCodeUrl: qrCodeUrl,
         paymentScreenshotUrl: paymentScreenshotUrl,
         createdAt: ticket.createdAt,
         updatedAt: ticket.updatedAt,
       };
+      if (accessKey) out.accessKey = accessKey;
+      if (qrCodeUrl) out.qrCodeUrl = qrCodeUrl;
+      return out;
     });
 
     return res.status(200).json({
@@ -241,7 +220,8 @@ const getTicketById = async (req, res) => {
     }
 
     const paymentScreenshotUrl = toImagePath(ticket.paymentScreenshotUrl);
-    const qrCodeUrl = toImagePath(ticket.qrCodeUrl);
+    const qrCodeUrl = ticket.status === "confirmed" ? toImagePath(ticket.qrCodeUrl) : null;
+    const accessKey = ticket.status === "confirmed" ? ticket.accessKey : null;
 
     // Joined users for this event
     const eventIdForJoined = ticket.eventId && (ticket.eventId._id || ticket.eventId);
@@ -271,7 +251,7 @@ const getTicketById = async (req, res) => {
     const isOwner = ticket.userId._id.toString() === userId;
     const isEventOrganizer = ticket.organizerId._id.toString() === userId;
 
-    // Build base ticket object
+    // Build base ticket object - only include accessKey and qrCodeUrl when confirmed
     const baseTicket = {
       id: ticket._id,
       event: formattedEvent,
@@ -280,11 +260,11 @@ const getTicketById = async (req, res) => {
       email: ticket.email,
       phone: ticket.phone,
       status: ticket.status,
-      accessKey: ticket.accessKey,
-      qrCodeUrl: qrCodeUrl,
       createdAt: ticket.createdAt,
       updatedAt: ticket.updatedAt,
     };
+    if (accessKey) baseTicket.accessKey = accessKey;
+    if (qrCodeUrl) baseTicket.qrCodeUrl = qrCodeUrl;
 
     // Add payment screenshot URL if available
     if (paymentScreenshotUrl) {
@@ -373,19 +353,22 @@ const getTicketsByEvent = async (req, res) => {
           : `${baseUrl}${ticket.paymentScreenshotUrl}`;
       }
 
-      return {
+      const out = {
         id: ticket._id,
         user: ticket.userId,
         username: ticket.username,
         email: ticket.email,
         phone: ticket.phone,
         status: ticket.status,
-        accessKey: ticket.accessKey,
-        qrCodeUrl: ticket.qrCodeUrl,
         paymentScreenshotUrl: paymentScreenshotUrl,
         createdAt: ticket.createdAt,
         updatedAt: ticket.updatedAt,
       };
+      if (ticket.status === "confirmed") {
+        out.accessKey = ticket.accessKey;
+        out.qrCodeUrl = ticket.qrCodeUrl;
+      }
+      return out;
     });
 
     return res.status(200).json({
@@ -690,6 +673,28 @@ const updateTicketStatus = async (req, res) => {
     }
 
     ticket.status = status;
+
+    // When setting status to "confirmed", generate accessKey and qrCodeUrl if not present
+    if (status === "confirmed") {
+      let accessKey = ticket.accessKey;
+      if (!accessKey) {
+        accessKey = generateAccessKey();
+        let existingTicket = await TicketModel.findOne({ accessKey });
+        while (existingTicket) {
+          accessKey = generateAccessKey();
+          existingTicket = await TicketModel.findOne({ accessKey });
+        }
+        ticket.accessKey = accessKey;
+      }
+      if (!ticket.qrCodeUrl) {
+        try {
+          ticket.qrCodeUrl = await generateQRCode(ticket.accessKey);
+        } catch (qrErr) {
+          console.warn("⚠️ Failed to generate QR code on status update:", qrErr.message);
+        }
+      }
+    }
+
     await ticket.save();
 
     return res.status(200).json({

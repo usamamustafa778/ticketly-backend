@@ -10,7 +10,7 @@ const createEventValidation = (req, res, next) => {
       location: joi.string().required(),
       image: joi.string().allow("").optional(),
       email: joi.string().email().required(),
-      phone: joi.string().required(),
+      phone: joi.string().allow("").optional(),
       ticketPrice: joi.number().min(0).required(),
       totalTickets: joi.number().integer().min(1).required(),
     });
