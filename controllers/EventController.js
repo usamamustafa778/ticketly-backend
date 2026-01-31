@@ -54,7 +54,7 @@ const createEvent = async (req, res) => {
     // Store only relative path in DB (never full URLs)
     const imagePathToStore = normalizeImageToRelativePath(image);
 
-    // Create event with status = "pending" (phone is optional)
+    // Create event with status = "pending" (phone and totalTickets are optional)
     const event = new EventModel({
       title,
       description,
@@ -65,7 +65,7 @@ const createEvent = async (req, res) => {
       email,
       phone: phone || "",
       ticketPrice,
-      totalTickets,
+      totalTickets: totalTickets ?? 0,
       status: "pending",
       createdBy: req.userId,
     });
