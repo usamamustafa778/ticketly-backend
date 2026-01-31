@@ -630,8 +630,195 @@ const getUserProfile = async (req, res) => {
         createdEvents: formattedCreatedEvents,
         joinedEvents: joinedEventsData,
         likedEvents: formattedLikedEvents,
+        likedEventsVisibility: user.likedEventsVisibility || "public",
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ==================== GET USER PROFILE BY ID (Public - No Auth) ====================
+const getUserProfileById = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const user = await UserModel.findById(userId).select("-password -email");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const baseUrl =
+      process.env.BASE_URL || `http://localhost:${process.env.PORT || 5001}`;
+
+    const formatProfileImageUrl = (profileImage) => {
+      if (!profileImage || profileImage === "") return null;
+      if (profileImage.startsWith("http://") || profileImage.startsWith("https://")) return profileImage;
+      return profileImage.startsWith("/") ? `${baseUrl}${profileImage}` : `${baseUrl}/${profileImage}`;
+    };
+
+    const formatEventImage = (imagePath) => {
+      if (!imagePath || imagePath === "") return { image: null, imageUrl: null };
+      if (imagePath.startsWith("http://") || imagePath.startsWith("https://")) {
+        try {
+          const url = new URL(imagePath);
+          return { image: url.pathname, imageUrl: `${baseUrl}${url.pathname}` };
+        } catch {
+          return { image: imagePath, imageUrl: `${baseUrl}${imagePath}` };
+        }
+      }
+      if (imagePath.startsWith("/uploads/")) {
+        return { image: imagePath, imageUrl: `${baseUrl}${imagePath}` };
+      }
+      return { image: imagePath, imageUrl: imagePath };
+    };
+
+    // Populate createdEvents (only approved/draft for public view)
+    const createdEvents = await EventModel.find({
+      _id: { $in: user.createdEvents || [] },
+    })
+      .populate("createdBy", "fullName username")
+      .sort({ createdAt: -1 });
+
+    const joinedEventIds = user.joinedEvents || [];
+    const events = await EventModel.find({ _id: { $in: joinedEventIds } })
+      .populate("createdBy", "fullName username")
+      .sort({ createdAt: -1 });
+
+    const allTickets = await TicketModel.find({
+      userId: user._id,
+      eventId: { $in: joinedEventIds },
+    }).sort({ createdAt: -1 });
+
+    const ticketsByEventId = {};
+    allTickets.forEach((ticket) => {
+      const eventIdStr = ticket.eventId.toString();
+      if (!ticketsByEventId[eventIdStr]) ticketsByEventId[eventIdStr] = [];
+      ticketsByEventId[eventIdStr].push({
+        id: ticket._id,
+        eventId: ticket.eventId,
+        username: ticket.username,
+        status: ticket.status,
+        createdAt: ticket.createdAt,
+      });
+    });
+
+    const showLikedEvents = (user.likedEventsVisibility || "public") === "public";
+    let likedEvents = [];
+    if (showLikedEvents && (user.likedEvents || []).length > 0) {
+      likedEvents = await EventModel.find({
+        _id: { $in: user.likedEvents || [] },
+      })
+        .populate("createdBy", "fullName username")
+        .sort({ createdAt: -1 });
+    }
+
+    const allProfileEventIds = [
+      ...createdEvents.map((e) => e._id),
+      ...events.map((e) => e._id),
+      ...likedEvents.map((e) => e._id),
+    ];
+    const usersWhoJoined = await UserModel.find({ joinedEvents: { $in: allProfileEventIds } })
+      .select("fullName username profileImage joinedEvents")
+      .lean();
+    const joinedByEventId = {};
+    allProfileEventIds.forEach((id) => (joinedByEventId[id.toString()] = []));
+    for (const u of usersWhoJoined) {
+      const profileImageUrl = formatProfileImageUrl(u.profileImage);
+      const userInfo = {
+        _id: u._id,
+        fullName: u.fullName || u.username || "User",
+        name: u.fullName || u.username || "User",
+        profileImageUrl: profileImageUrl || null,
+      };
+      (u.joinedEvents || []).forEach((eid) => {
+        const eidStr = eid.toString();
+        if (joinedByEventId[eidStr]) joinedByEventId[eidStr].push(userInfo);
+      });
+    }
+
+    const joinedEventsData = events.map((event) => {
+      const eventIdStr = event._id.toString();
+      const eventImage = formatEventImage(event.image);
+      const joinedUsers = joinedByEventId[eventIdStr] || [];
+      return {
+        event: {
+          id: event._id,
+          title: event.title,
+          description: event.description,
+          date: event.date,
+          time: event.time,
+          location: event.location,
+          image: eventImage.image,
+          imageUrl: eventImage.imageUrl,
+          email: event.email,
+          phone: event.phone,
+          ticketPrice: event.ticketPrice,
+          totalTickets: event.totalTickets,
+          status: event.status,
+          createdBy: event.createdBy,
+          createdAt: event.createdAt,
+          updatedAt: event.updatedAt,
+          joinedUsers,
+          joinedCount: joinedUsers.length,
+        },
+        tickets: ticketsByEventId[eventIdStr] || [],
+      };
+    });
+
+    const formatEvent = (event) => {
+      const eventImage = formatEventImage(event.image);
+      const joinedUsers = joinedByEventId[event._id.toString()] || [];
+      return {
+        id: event._id,
+        title: event.title,
+        description: event.description,
+        date: event.date,
+        time: event.time,
+        location: event.location,
+        image: eventImage.image,
+        imageUrl: eventImage.imageUrl,
+        email: event.email,
+        phone: event.phone,
+        ticketPrice: event.ticketPrice,
+        totalTickets: event.totalTickets,
+        status: event.status,
+        createdBy: event.createdBy,
+        createdAt: event.createdAt,
+        updatedAt: event.updatedAt,
+        joinedUsers,
+        joinedCount: joinedUsers.length,
+      };
+    };
+
+    const formattedCreatedEvents = createdEvents.map(formatEvent);
+    const formattedLikedEvents = likedEvents.map(formatEvent);
+
+    const profileImageUrl = user.profileImage
+      ? user.profileImage.startsWith("http")
+        ? user.profileImage
+        : `${baseUrl}${user.profileImage}`
+      : null;
+
+    return res.status(200).json({
+      success: true,
+      user: {
+        _id: user._id,
+        id: user._id,
+        fullName: user.fullName || user.name,
+        username: user.username,
+        profileImage: user.profileImage || null,
+        profileImageUrl: profileImageUrl,
+        companyName: user.companyName || null,
+        likedEventsVisibility: user.likedEventsVisibility || "public",
+        createdEvents: formattedCreatedEvents,
+        joinedEvents: joinedEventsData,
+        likedEvents: formattedLikedEvents,
       },
     });
   } catch (error) {
@@ -682,10 +869,16 @@ const getAllUsers = async (req, res) => {
 // ==================== UPDATE USER (Self Update) ====================
 const updateUser = async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, likedEventsVisibility } = req.body;
     const updateData = {};
 
     // Only update fields that are provided
+    if (likedEventsVisibility !== undefined) {
+      if (["public", "private"].includes(likedEventsVisibility)) {
+        updateData.likedEventsVisibility = likedEventsVisibility;
+      }
+    }
+
     if (name) {
       updateData.name = name;
       updateData.fullName = name;
@@ -750,6 +943,7 @@ const updateUser = async (req, res) => {
         createdEvents: updatedUser.createdEvents || [],
         joinedEvents: updatedUser.joinedEvents || [],
         likedEvents: updatedUser.likedEvents || [],
+        likedEventsVisibility: updatedUser.likedEventsVisibility || "public",
         createdAt: updatedUser.createdAt,
         updatedAt: updatedUser.updatedAt,
       },
@@ -884,7 +1078,7 @@ const updateUserByAdmin = async (req, res) => {
   }
 };
 
-// ==================== DELETE USER ====================
+// ==================== DELETE USER (self) ====================
 const deleteUser = async (req, res) => {
   try {
     const deletedUser = await UserModel.findByIdAndDelete(req.userId);
@@ -899,6 +1093,42 @@ const deleteUser = async (req, res) => {
     return res
       .status(200)
       .json({ success: true, message: "User deleted successfully" });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ==================== DELETE USER BY ADMIN ====================
+const deleteUserByAdmin = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Prevent admin from deleting themselves
+    if (userId === req.userId) {
+      return res.status(400).json({
+        success: false,
+        message: "You cannot delete your own account",
+      });
+    }
+
+    const user = await UserModel.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Delete user's refresh tokens
+    await RefreshTokenModel.deleteMany({ userId });
+
+    // Delete the user
+    await UserModel.findByIdAndDelete(userId);
+
+    return res.status(200).json({
+      success: true,
+      message: "User deleted successfully",
+    });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -1030,9 +1260,11 @@ module.exports = {
   googleCallback,
   refreshToken,
   getUserProfile,
+  getUserProfileById,
   getAllUsers,
   updateUser,
   updateUserByAdmin,
   deleteUser,
+  deleteUserByAdmin,
   uploadProfileImage,
 };

@@ -8,6 +8,8 @@ const {
   updateEvent,
   deleteEvent,
   uploadEventImage,
+  likeEvent,
+  unlikeEvent,
 } = require("../controllers/EventController");
 const { getTicketsByEvent } = require("../controllers/TicketController");
 const {
@@ -16,6 +18,7 @@ const {
 } = require("../middleware/EventValidation");
 const {
   verifyToken,
+  optionalVerifyToken,
   requireOrganizer,
 } = require("../middleware/AuthMiddleware");
 const uploadEvent = require("../config/multerEvent");
@@ -93,8 +96,12 @@ router.get(
 ); // Get tickets by event (Organizer only) - Must be before /:id
 
 // ==================== PUBLIC ROUTES (Order matters - must be last) ====================
-router.get("/:id", getEventById); // Get event by ID (Fully public - no authentication required)
+router.get("/:id", optionalVerifyToken, getEventById); // Get event by ID (public, optional auth for isLiked)
 router.put("/:id", verifyToken, updateEventValidation, updateEvent); // Update event (owner or admin only)
 router.delete("/:id", verifyToken, deleteEvent); // Delete event (owner or admin only)
+
+// Like/Unlike (Auth required)
+router.post("/:id/like", verifyToken, likeEvent);
+router.post("/:id/unlike", verifyToken, unlikeEvent);
 
 module.exports = router;

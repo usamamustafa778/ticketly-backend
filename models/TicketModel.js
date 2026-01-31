@@ -68,11 +68,10 @@ TicketSchema.pre("save", function (next) {
   next();
 });
 
-// Indexes for faster queries
+// Indexes for faster queries (accessKey already has unique index via schema)
 TicketSchema.index({ userId: 1, createdAt: -1 });
 TicketSchema.index({ eventId: 1 });
 TicketSchema.index({ organizerId: 1 });
-TicketSchema.index({ accessKey: 1 });
 TicketSchema.index({ status: 1 });
 
 const TicketModel = mongoose.model("Ticket", TicketSchema);

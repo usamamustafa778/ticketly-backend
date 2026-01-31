@@ -7,6 +7,7 @@ const path = require("path");
 const connectDB = require("./config/db");
 const errorHandler = require("./middleware/ErrorHandler");
 const AuthRouter = require("./routers/AuthRouter");
+const UsersRouter = require("./routers/UsersRouter");
 const EventRouter = require("./routers/EventRouter");
 const AdminRouter = require("./routers/AdminRouter");
 const TicketRouter = require("./routers/TicketRouter");
@@ -135,6 +136,7 @@ connectDB();
 
 // Routes
 app.use("/api/auth", AuthRouter);
+app.use("/api/users", UsersRouter);
 app.use("/api/events", EventRouter);
 app.use("/api/admin", AdminRouter);
 app.use("/api/tickets", TicketRouter);

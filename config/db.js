@@ -3,8 +3,14 @@ const createAdmin = require("../utils/createAdmin");
 
 const connectDB = async () => {
   try {
+    const uri = process.env.MONGO_URI;
+    if (!uri || !/^mongodb(\+srv)?:\/\//i.test(uri)) {
+      throw new Error(
+        'MONGO_URI must start with "mongodb://" or "mongodb+srv://". Check your .env file.'
+      );
+    }
     // Add connection options for better error handling
-    const conn = await mongoose.connect(process.env.MONGO_URI, {
+    const conn = await mongoose.connect(uri, {
       serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
     });
     console.log(`✅ MongoDB Connected: ${conn.connection.host}`);

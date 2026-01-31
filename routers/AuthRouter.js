@@ -12,6 +12,7 @@ const {
   updateUser,
   updateUserByAdmin,
   deleteUser,
+  deleteUserByAdmin,
   uploadProfileImage,
 } = require("../controllers/AuthController");
 const {
@@ -83,6 +84,7 @@ router.post(
 router.get("/users", verifyToken, requireAdmin, getAllUsers); // Get all users (Admin only)
 router.put("/update", verifyToken, updateUserValidation, updateUser); // Update own profile (User)
 router.put("/update/:userId", verifyToken, requireAdmin, updateUserByAdminValidation, updateUserByAdmin); // Update any user (Admin only)
-router.delete("/delete", verifyToken, deleteUser); // Delete user
+router.delete("/delete", verifyToken, deleteUser); // Delete own account
+router.delete("/delete/:userId", verifyToken, requireAdmin, deleteUserByAdmin); // Delete user by admin
 
 module.exports = router;

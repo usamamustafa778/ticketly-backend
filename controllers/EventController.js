@@ -298,6 +298,7 @@ const getMyEvents = async (req, res) => {
 const getEventById = async (req, res) => {
   try {
     const { id } = req.params;
+    const userId = req.userId || null; // Optional: from optional auth
 
     const event = await EventModel.findById(id).populate(
       "createdBy",
@@ -321,6 +322,18 @@ const getEventById = async (req, res) => {
       name: u.fullName || u.username || "User",
       profileImageUrl: formatProfileImageUrl(u.profileImage) || null,
     }));
+
+    // Like count: users who liked this event
+    const likeCount = await UserModel.countDocuments({ likedEvents: event._id });
+
+    // isLiked: whether current user has liked (when authenticated)
+    let isLiked = false;
+    if (userId) {
+      const user = await UserModel.findById(userId).select("likedEvents").lean();
+      if (user && user.likedEvents && user.likedEvents.some((eid) => eid.toString() === event._id.toString())) {
+        isLiked = true;
+      }
+    }
 
     // Format event image URLs
     const eventImage = formatEventImage(event.image);
@@ -347,6 +360,8 @@ const getEventById = async (req, res) => {
         updatedAt: event.updatedAt,
         joinedUsers,
         joinedCount: joinedUsers.length,
+        likeCount,
+        isLiked,
       },
     });
   } catch (error) {
@@ -355,6 +370,76 @@ const getEventById = async (req, res) => {
       message: "Error fetching event",
       error: error.message,
     });
+  }
+};
+
+// ==================== LIKE EVENT ====================
+const likeEvent = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.userId;
+
+    const event = await EventModel.findById(id);
+    if (!event) {
+      return res.status(404).json({ success: false, message: "Event not found" });
+    }
+
+    const user = await UserModel.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    const eventIdStr = event._id.toString();
+    const likedIds = (user.likedEvents || []).map((eid) => eid.toString());
+    if (likedIds.includes(eventIdStr)) {
+      return res.status(200).json({ success: true, message: "Already liked", liked: true });
+    }
+
+    user.likedEvents = user.likedEvents || [];
+    user.likedEvents.push(event._id);
+    await user.save();
+
+    const likeCount = await UserModel.countDocuments({ likedEvents: event._id });
+    return res.status(200).json({
+      success: true,
+      message: "Event liked",
+      liked: true,
+      likeCount,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ==================== UNLIKE EVENT ====================
+const unlikeEvent = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.userId;
+
+    const event = await EventModel.findById(id);
+    if (!event) {
+      return res.status(404).json({ success: false, message: "Event not found" });
+    }
+
+    const user = await UserModel.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    const eventIdStr = event._id.toString();
+    user.likedEvents = (user.likedEvents || []).filter((eid) => eid.toString() !== eventIdStr);
+    await user.save();
+
+    const likeCount = await UserModel.countDocuments({ likedEvents: event._id });
+    return res.status(200).json({
+      success: true,
+      message: "Event unliked",
+      liked: false,
+      likeCount,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -687,4 +772,6 @@ module.exports = {
   getPendingEvents,
   approveEvent,
   uploadEventImage,
+  likeEvent,
+  unlikeEvent,
 };

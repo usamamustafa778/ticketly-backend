@@ -71,6 +71,25 @@ const verifyToken = (req, res, next) => {
   }
 };
 
+// Optional auth: attach userId if valid token present, but never reject
+const optionalVerifyToken = (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return next();
+    }
+    const token = authHeader.split(" ")[1];
+    if (!token) return next();
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (decoded && decoded.userId) {
+      req.userId = decoded.userId;
+    }
+    next();
+  } catch {
+    next(); // Ignore token errors - treat as unauthenticated
+  }
+};
+
 // Middleware to check if user is admin
 const requireAdmin = async (req, res, next) => {
   try {
@@ -148,4 +167,4 @@ const attachUser = async (req, res, next) => {
   }
 };
 
-module.exports = { verifyToken, requireAdmin, requireOrganizer, attachUser };
+module.exports = { verifyToken, optionalVerifyToken, requireAdmin, requireOrganizer, attachUser };

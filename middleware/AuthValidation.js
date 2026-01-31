@@ -47,6 +47,7 @@ const updateUserValidation = (req, res, next) => {
       name: joi.string().min(3).max(30),
       email: joi.string().email(),
       password: joi.string().min(8).max(30),
+      likedEventsVisibility: joi.string().valid("public", "private"),
     }).min(1); // At least one field must be present
 
     const { error } = schema.validate(req.body);

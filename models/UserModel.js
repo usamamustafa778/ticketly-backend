@@ -64,6 +64,11 @@ const UserSchema = new mongoose.Schema({
     ref: "Event",
     default: [],
   },
+  likedEventsVisibility: {
+    type: String,
+    enum: ["public", "private"],
+    default: "public",
+  },
   createdAt: {
     type: Date,
     default: Date.now,
