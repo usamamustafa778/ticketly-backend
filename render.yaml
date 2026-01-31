@@ -1,0 +1,10 @@
+# Render Blueprint - ticketly-backend
+# https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: ticketly-backend
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    # Ensure uploads directory exists (Render uses ephemeral disk)
+    # Add env vars in Render Dashboard: MONGO_URI, JWT_SECRET, FRONTEND_URL, etc.
