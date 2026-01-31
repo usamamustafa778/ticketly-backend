@@ -133,6 +133,19 @@ const formatProfileImageUrl = (profileImage) => {
   return profileImage.startsWith("/") ? profileImage : `/${profileImage}`;
 };
 
+const formatCreatedByWithProfileImage = (cb) => {
+  if (!cb) return null;
+  const profileImageUrl = formatProfileImageUrl(cb.profileImage) || null;
+  return {
+    _id: cb._id,
+    id: cb._id,
+    fullName: cb.fullName,
+    username: cb.username,
+    email: cb.email,
+    profileImageUrl,
+  };
+};
+
 // ==================== GET ALL APPROVED EVENTS (PUBLIC) ====================
 const getApprovedEvents = async (req, res) => {
   try {
@@ -142,7 +155,7 @@ const getApprovedEvents = async (req, res) => {
         "title description date time location image ticketPrice totalTickets createdAt createdBy"
       )
       .sort({ createdAt: -1 })
-      .populate("createdBy", "fullName username email")
+      .populate("createdBy", "fullName username email profileImage")
       .lean();
 
     const eventIds = events.map((e) => e._id);
@@ -185,7 +198,7 @@ const getApprovedEvents = async (req, res) => {
           ticketPrice: event.ticketPrice,
           totalTickets: event.totalTickets,
           createdAt: event.createdAt,
-          createdBy: event.createdBy || null,
+          createdBy: formatCreatedByWithProfileImage(event.createdBy),
           joinedUsers,
           joinedCount: joinedUsers.length,
         };
@@ -204,7 +217,7 @@ const getApprovedEvents = async (req, res) => {
           ticketPrice: event.ticketPrice,
           totalTickets: event.totalTickets,
           createdAt: event.createdAt,
-          createdBy: event.createdBy || null,
+          createdBy: formatCreatedByWithProfileImage(event.createdBy),
           joinedUsers,
           joinedCount: joinedUsers.length,
         };
@@ -232,7 +245,7 @@ const getMyEvents = async (req, res) => {
     // Return events created by logged-in user (include status for profile view)
     const events = await EventModel.find({ createdBy: req.userId })
       .sort({ createdAt: -1 })
-      .populate("createdBy", "fullName username email");
+      .populate("createdBy", "fullName username email profileImage");
 
     const eventIds = events.map((e) => e._id);
     const usersWhoJoined = await UserModel.find({ joinedEvents: { $in: eventIds } })
@@ -270,7 +283,7 @@ const getMyEvents = async (req, res) => {
         ticketPrice: event.ticketPrice,
         totalTickets: event.totalTickets,
         status: event.status,
-        createdBy: event.createdBy,
+        createdBy: formatCreatedByWithProfileImage(event.createdBy),
         createdAt: event.createdAt,
         updatedAt: event.updatedAt,
         joinedUsers,
@@ -353,7 +366,7 @@ const getEventById = async (req, res) => {
         ticketPrice: event.ticketPrice,
         totalTickets: event.totalTickets,
         status: event.status,
-        createdBy: event.createdBy,
+        createdBy: formatCreatedByWithProfileImage(event.createdBy),
         createdAt: event.createdAt,
         updatedAt: event.updatedAt,
         joinedUsers,
@@ -499,7 +512,7 @@ const updateEvent = async (req, res) => {
       id,
       { $set: updateData },
       { new: true, runValidators: true }
-    ).populate("createdBy", "fullName username email");
+    ).populate("createdBy", "fullName username email profileImage");
 
     // Format event image URLs
     const eventImage = formatEventImage(updatedEvent.image);
@@ -521,7 +534,7 @@ const updateEvent = async (req, res) => {
         ticketPrice: updatedEvent.ticketPrice,
         totalTickets: updatedEvent.totalTickets,
         status: updatedEvent.status,
-        createdBy: updatedEvent.createdBy,
+        createdBy: formatCreatedByWithProfileImage(updatedEvent.createdBy),
         createdAt: updatedEvent.createdAt,
         updatedAt: updatedEvent.updatedAt,
       },
@@ -584,7 +597,7 @@ const getPendingEvents = async (req, res) => {
     // Return all pending events
     const events = await EventModel.find({ status: "pending" })
       .sort({ createdAt: -1 })
-      .populate("createdBy", "fullName username email phone");
+      .populate("createdBy", "fullName username email phone profileImage");
 
     const formattedEvents = events.map((event) => {
       const eventImage = formatEventImage(event.image);
@@ -602,7 +615,7 @@ const getPendingEvents = async (req, res) => {
         ticketPrice: event.ticketPrice,
         totalTickets: event.totalTickets,
         status: event.status,
-        createdBy: event.createdBy,
+        createdBy: formatCreatedByWithProfileImage(event.createdBy),
         createdAt: event.createdAt,
         updatedAt: event.updatedAt,
       };

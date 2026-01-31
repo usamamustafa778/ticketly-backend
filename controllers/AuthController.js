@@ -413,14 +413,14 @@ const getUserProfile = async (req, res) => {
     const createdEvents = await EventModel.find({
       _id: { $in: user.createdEvents || [] },
     })
-      .populate("createdBy", "fullName username email")
+      .populate("createdBy", "fullName username email profileImage")
       .sort({ createdAt: -1 });
 
     // Populate likedEvents
     const likedEvents = await EventModel.find({
       _id: { $in: user.likedEvents || [] },
     })
-      .populate("createdBy", "fullName username email")
+      .populate("createdBy", "fullName username email profileImage")
       .sort({ createdAt: -1 });
 
     // Get joinedEvents with their tickets
@@ -430,7 +430,7 @@ const getUserProfile = async (req, res) => {
     const events = await EventModel.find({
       _id: { $in: joinedEventIds },
     })
-      .populate("createdBy", "fullName username email")
+      .populate("createdBy", "fullName username email profileImage")
       .sort({ createdAt: -1 });
 
     // Fetch all tickets for this user and these events in parallel
@@ -485,6 +485,19 @@ const getUserProfile = async (req, res) => {
       });
     }
 
+    const formatCreatedBy = (cb) => {
+      if (!cb) return null;
+      const profileImageUrl = toImagePath(cb.profileImage) || null;
+      return {
+        _id: cb._id,
+        id: cb._id,
+        fullName: cb.fullName,
+        username: cb.username,
+        email: cb.email,
+        profileImageUrl,
+      };
+    };
+
     // Format joinedEvents with their tickets (include joinedUsers from backend)
     const joinedEventsData = events.map((event) => {
       const eventIdStr = event._id.toString();
@@ -503,7 +516,7 @@ const getUserProfile = async (req, res) => {
         ticketPrice: event.ticketPrice,
         totalTickets: event.totalTickets,
         status: event.status,
-        createdBy: event.createdBy,
+        createdBy: formatCreatedBy(event.createdBy),
         createdAt: event.createdAt,
         updatedAt: event.updatedAt,
         joinedUsers,
@@ -533,7 +546,7 @@ const getUserProfile = async (req, res) => {
         ticketPrice: event.ticketPrice,
         totalTickets: event.totalTickets,
         status: event.status,
-        createdBy: event.createdBy,
+        createdBy: formatCreatedBy(event.createdBy),
         createdAt: event.createdAt,
         updatedAt: event.updatedAt,
         joinedUsers,
@@ -558,7 +571,7 @@ const getUserProfile = async (req, res) => {
         ticketPrice: event.ticketPrice,
         totalTickets: event.totalTickets,
         status: event.status,
-        createdBy: event.createdBy,
+        createdBy: formatCreatedBy(event.createdBy),
         createdAt: event.createdAt,
         updatedAt: event.updatedAt,
         joinedUsers,
@@ -609,12 +622,12 @@ const getUserProfileById = async (req, res) => {
     const createdEvents = await EventModel.find({
       _id: { $in: user.createdEvents || [] },
     })
-      .populate("createdBy", "fullName username")
+      .populate("createdBy", "fullName username profileImage")
       .sort({ createdAt: -1 });
 
     const joinedEventIds = user.joinedEvents || [];
     const events = await EventModel.find({ _id: { $in: joinedEventIds } })
-      .populate("createdBy", "fullName username")
+      .populate("createdBy", "fullName username profileImage")
       .sort({ createdAt: -1 });
 
     const allTickets = await TicketModel.find({
@@ -641,7 +654,7 @@ const getUserProfileById = async (req, res) => {
       likedEvents = await EventModel.find({
         _id: { $in: user.likedEvents || [] },
       })
-        .populate("createdBy", "fullName username")
+        .populate("createdBy", "fullName username profileImage")
         .sort({ createdAt: -1 });
     }
 
@@ -669,6 +682,19 @@ const getUserProfileById = async (req, res) => {
       });
     }
 
+    const formatCreatedByPublic = (cb) => {
+      if (!cb) return null;
+      const profileImageUrl = toImagePath(cb.profileImage) || null;
+      return {
+        _id: cb._id,
+        id: cb._id,
+        fullName: cb.fullName,
+        username: cb.username,
+        email: cb.email,
+        profileImageUrl,
+      };
+    };
+
     const joinedEventsData = events.map((event) => {
       const eventIdStr = event._id.toString();
       const eventImageUrl = toImagePath(event.image);
@@ -688,7 +714,7 @@ const getUserProfileById = async (req, res) => {
           ticketPrice: event.ticketPrice,
           totalTickets: event.totalTickets,
           status: event.status,
-          createdBy: event.createdBy,
+          createdBy: formatCreatedByPublic(event.createdBy),
           createdAt: event.createdAt,
           updatedAt: event.updatedAt,
           joinedUsers,
@@ -715,7 +741,7 @@ const getUserProfileById = async (req, res) => {
         ticketPrice: event.ticketPrice,
         totalTickets: event.totalTickets,
         status: event.status,
-        createdBy: event.createdBy,
+        createdBy: formatCreatedByPublic(event.createdBy),
         createdAt: event.createdAt,
         updatedAt: event.updatedAt,
         joinedUsers,
