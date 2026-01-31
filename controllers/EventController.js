@@ -47,6 +47,7 @@ const createEvent = async (req, res) => {
       image,
       email,
       phone,
+      gender,
       ticketPrice,
       totalTickets,
     } = req.body;
@@ -64,6 +65,7 @@ const createEvent = async (req, res) => {
       image: imagePathToStore,
       email,
       phone: phone || "",
+      gender: gender || "all",
       ticketPrice,
       totalTickets: totalTickets ?? 0,
       status: "pending",
@@ -100,6 +102,7 @@ const createEvent = async (req, res) => {
         imageUrl: eventImage.imageUrl,
         email: event.email,
         phone: event.phone,
+        gender: event.gender,
         ticketPrice: event.ticketPrice,
         totalTickets: event.totalTickets,
         status: event.status,
@@ -178,6 +181,7 @@ const getApprovedEvents = async (req, res) => {
           time: event.time,
           location: event.location,
           imageUrl: eventImage.imageUrl,
+          gender: event.gender,
           ticketPrice: event.ticketPrice,
           totalTickets: event.totalTickets,
           createdAt: event.createdAt,
@@ -196,6 +200,7 @@ const getApprovedEvents = async (req, res) => {
           location: event.location,
           image: null,
           imageUrl: null,
+          gender: event.gender,
           ticketPrice: event.ticketPrice,
           totalTickets: event.totalTickets,
           createdAt: event.createdAt,
@@ -261,6 +266,7 @@ const getMyEvents = async (req, res) => {
         imageUrl: eventImage.imageUrl,
         email: event.email,
         phone: event.phone,
+        gender: event.gender,
         ticketPrice: event.ticketPrice,
         totalTickets: event.totalTickets,
         status: event.status,
@@ -343,6 +349,7 @@ const getEventById = async (req, res) => {
         imageUrl: eventImage.imageUrl,
         email: event.email,
         phone: event.phone,
+        gender: event.gender,
         ticketPrice: event.ticketPrice,
         totalTickets: event.totalTickets,
         status: event.status,
@@ -447,6 +454,7 @@ const updateEvent = async (req, res) => {
       image,
       email,
       phone,
+      gender,
       ticketPrice,
       totalTickets,
     } = req.body;
@@ -483,6 +491,7 @@ const updateEvent = async (req, res) => {
     if (image !== undefined) updateData.image = normalizeImageToRelativePath(image);
     if (email) updateData.email = email;
     if (phone) updateData.phone = phone;
+    if (gender !== undefined) updateData.gender = gender;
     if (ticketPrice !== undefined) updateData.ticketPrice = ticketPrice;
     if (totalTickets !== undefined) updateData.totalTickets = totalTickets;
 
@@ -508,6 +517,7 @@ const updateEvent = async (req, res) => {
         imageUrl: eventImage.imageUrl,
         email: updatedEvent.email,
         phone: updatedEvent.phone,
+        gender: updatedEvent.gender,
         ticketPrice: updatedEvent.ticketPrice,
         totalTickets: updatedEvent.totalTickets,
         status: updatedEvent.status,
@@ -588,6 +598,7 @@ const getPendingEvents = async (req, res) => {
         imageUrl: eventImage.imageUrl,
         email: event.email,
         phone: event.phone,
+        gender: event.gender,
         ticketPrice: event.ticketPrice,
         totalTickets: event.totalTickets,
         status: event.status,

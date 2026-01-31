@@ -44,6 +44,11 @@ const EventSchema = new mongoose.Schema({
     trim: true,
     default: "",
   },
+  gender: {
+    type: String,
+    enum: ["male", "female", "all"],
+    default: "all",
+  },
   ticketPrice: {
     type: Number,
     required: true,

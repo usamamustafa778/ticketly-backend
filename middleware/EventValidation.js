@@ -11,6 +11,7 @@ const createEventValidation = (req, res, next) => {
       image: joi.string().allow("").optional(),
       email: joi.string().email().required(),
       phone: joi.string().allow("").optional(),
+      gender: joi.string().valid("male", "female", "all").optional(),
       ticketPrice: joi.number().min(0).required(),
       totalTickets: joi.number().integer().min(0).optional(),
     });
@@ -39,6 +40,7 @@ const updateEventValidation = (req, res, next) => {
       image: joi.string().allow(""),
       email: joi.string().email(),
       phone: joi.string(),
+      gender: joi.string().valid("male", "female", "all"),
       ticketPrice: joi.number().min(0),
       totalTickets: joi.number().integer().min(1),
     }).min(1); // At least one field must be present
