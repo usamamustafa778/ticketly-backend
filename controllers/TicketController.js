@@ -6,12 +6,18 @@ const { generateAccessKey, generateQRCode } = require("../utils/qrCodeService");
 const path = require("path");
 const fs = require("fs");
 
-// Helper to format user profile image URL for joinedUsers (same as EventController)
-const formatProfileImageUrl = (profileImage) => {
-  const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5001}`;
-  if (!profileImage || profileImage === "") return null;
-  if (profileImage.startsWith("http://") || profileImage.startsWith("https://")) return profileImage;
-  return profileImage.startsWith("/") ? `${baseUrl}${profileImage}` : `${baseUrl}/${profileImage}`;
+// Return only relative path (no base URL) - client constructs full URL from API_BASE_URL
+const toImagePath = (val) => {
+  if (!val || val === "") return null;
+  if (val.startsWith("http://") || val.startsWith("https://")) {
+    try {
+      return new URL(val).pathname;
+    } catch {
+      const i = val.indexOf("/uploads");
+      return i !== -1 ? val.substring(i) : val;
+    }
+  }
+  return val.startsWith("/") ? val : `/${val}`;
 };
 
 // Build map eventId -> joinedUsers for ticket event objects
@@ -28,7 +34,7 @@ const getJoinedUsersMap = async (eventIds) => {
       _id: user._id,
       fullName: user.fullName || user.username || "User",
       name: user.fullName || user.username || "User",
-      profileImageUrl: formatProfileImageUrl(user.profileImage) || null,
+      profileImageUrl: toImagePath(user.profileImage) || null,
     };
     (user.joinedEvents || []).forEach((eid) => {
       const eidStr = eid.toString();
@@ -117,10 +123,6 @@ const createTicket = async (req, res) => {
       }
     }
 
-    // Build QR code URL for response
-    const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5001}`;
-    const fullQrCodeUrl = qrCodeUrl ? `${baseUrl}${qrCodeUrl}` : null;
-
     return res.status(201).json({
       success: true,
       message: "Ticket created successfully. Please submit payment.",
@@ -131,8 +133,8 @@ const createTicket = async (req, res) => {
         email: ticket.email,
         phone: ticket.phone,
         status: ticket.status,
-        accessKey: ticket.accessKey, // Return ticket # to user
-        qrCodeUrl: fullQrCodeUrl, // Return QR code URL
+        accessKey: ticket.accessKey,
+        qrCodeUrl: qrCodeUrl || null, // Path only - client constructs full URL
         createdAt: ticket.createdAt,
       },
     });
@@ -155,82 +157,23 @@ const getMyTickets = async (req, res) => {
       .populate("organizerId", "fullName username email phone")
       .sort({ createdAt: -1 });
 
-    const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5001}`;
-
-    // Helper function to format event image URLs (same as EventController)
-    const formatEventImage = (imagePath) => {
-      if (!imagePath || imagePath === "") {
-        return {
-          image: null,
-          imageUrl: null,
-        };
-      }
-
-      // If it's already a full URL, extract the relative path and reconstruct with current baseUrl
-      if (imagePath.startsWith("http://") || imagePath.startsWith("https://")) {
-        try {
-          const url = new URL(imagePath);
-          const relativePath = url.pathname;
-          // Reconstruct URL using current baseUrl (same as profile images)
-          return {
-            image: relativePath,
-            imageUrl: `${baseUrl}${relativePath}`,
-          };
-        } catch {
-          // If URL parsing fails, treat as relative path
-          return {
-            image: imagePath,
-            imageUrl: `${baseUrl}${imagePath}`,
-          };
-        }
-      }
-
-      // If it's a relative path (starts with /uploads/), construct full URL
-      if (imagePath.startsWith("/uploads/")) {
-        return {
-          image: imagePath,
-          imageUrl: `${baseUrl}${imagePath}`,
-        };
-      }
-
-      // Otherwise return as is (could be external URL or empty)
-      return {
-        image: imagePath,
-        imageUrl: imagePath,
-      };
-    };
-
     // Get joinedUsers for all events in this ticket list
     const eventIds = [...new Set(tickets.map((t) => t.eventId).filter(Boolean))];
     const joinedUsersMap = await getJoinedUsersMap(eventIds);
 
     const formattedTickets = tickets.map((ticket) => {
-      // Build payment screenshot URL if exists
-      let paymentScreenshotUrl = null;
-      if (ticket.paymentScreenshotUrl) {
-        paymentScreenshotUrl = ticket.paymentScreenshotUrl.startsWith("http")
-          ? ticket.paymentScreenshotUrl
-          : `${baseUrl}${ticket.paymentScreenshotUrl}`;
-      }
-
-      // Build QR code URL if exists
-      let qrCodeUrl = null;
-      if (ticket.qrCodeUrl) {
-        qrCodeUrl = ticket.qrCodeUrl.startsWith("http")
-          ? ticket.qrCodeUrl
-          : `${baseUrl}${ticket.qrCodeUrl}`;
-      }
+      // Return paths only - client constructs full URLs
+      const paymentScreenshotUrl = toImagePath(ticket.paymentScreenshotUrl);
+      const qrCodeUrl = toImagePath(ticket.qrCodeUrl);
 
       // Format event image URLs and attach joinedUsers
       const eventIdStr = ticket.eventId && (ticket.eventId._id || ticket.eventId).toString();
       const joinedUsers = joinedUsersMap[eventIdStr] || [];
       let formattedEvent = ticket.eventId;
       if (ticket.eventId && ticket.eventId.image !== undefined) {
-        const eventImage = formatEventImage(ticket.eventId.image);
         formattedEvent = {
           ...ticket.eventId.toObject ? ticket.eventId.toObject() : ticket.eventId,
-          image: eventImage.image,
-          imageUrl: eventImage.imageUrl,
+          imageUrl: toImagePath(ticket.eventId.image),
           joinedUsers,
           joinedCount: joinedUsers.length,
         };
@@ -297,65 +240,8 @@ const getTicketById = async (req, res) => {
       });
     }
 
-    // Get payment screenshot URL from ticket (now stored directly on ticket)
-    const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5001}`;
-    let paymentScreenshotUrl = null;
-    if (ticket.paymentScreenshotUrl) {
-      paymentScreenshotUrl = ticket.paymentScreenshotUrl.startsWith("http")
-        ? ticket.paymentScreenshotUrl
-        : `${baseUrl}${ticket.paymentScreenshotUrl}`;
-    }
-
-    // Build QR code URL if exists
-    let qrCodeUrl = null;
-    if (ticket.qrCodeUrl) {
-      qrCodeUrl = ticket.qrCodeUrl.startsWith("http")
-        ? ticket.qrCodeUrl
-        : `${baseUrl}${ticket.qrCodeUrl}`;
-    }
-
-    // Helper function to format event image URLs (same as EventController)
-    const formatEventImage = (imagePath) => {
-      if (!imagePath || imagePath === "") {
-        return {
-          image: null,
-          imageUrl: null,
-        };
-      }
-
-      // If it's already a full URL, extract the relative path and reconstruct with current baseUrl
-      if (imagePath.startsWith("http://") || imagePath.startsWith("https://")) {
-        try {
-          const url = new URL(imagePath);
-          const relativePath = url.pathname;
-          // Reconstruct URL using current baseUrl (same as profile images)
-          return {
-            image: relativePath,
-            imageUrl: `${baseUrl}${relativePath}`,
-          };
-        } catch {
-          // If URL parsing fails, treat as relative path
-          return {
-            image: imagePath,
-            imageUrl: `${baseUrl}${imagePath}`,
-          };
-        }
-      }
-
-      // If it's a relative path (starts with /uploads/), construct full URL
-      if (imagePath.startsWith("/uploads/")) {
-        return {
-          image: imagePath,
-          imageUrl: `${baseUrl}${imagePath}`,
-        };
-      }
-
-      // Otherwise return as is (could be external URL or empty)
-      return {
-        image: imagePath,
-        imageUrl: imagePath,
-      };
-    };
+    const paymentScreenshotUrl = toImagePath(ticket.paymentScreenshotUrl);
+    const qrCodeUrl = toImagePath(ticket.qrCodeUrl);
 
     // Joined users for this event
     const eventIdForJoined = ticket.eventId && (ticket.eventId._id || ticket.eventId);
@@ -365,11 +251,9 @@ const getTicketById = async (req, res) => {
     // Format event image URLs and attach joinedUsers
     let formattedEvent = ticket.eventId;
     if (ticket.eventId && ticket.eventId.image !== undefined) {
-      const eventImage = formatEventImage(ticket.eventId.image);
       formattedEvent = {
         ...ticket.eventId.toObject ? ticket.eventId.toObject() : ticket.eventId,
-        image: eventImage.image,
-        imageUrl: eventImage.imageUrl,
+        imageUrl: toImagePath(ticket.eventId.image),
         joinedUsers,
         joinedCount: joinedUsers.length,
       };

@@ -6,6 +6,19 @@ const { generateQRCode, generateAccessKey } = require("../utils/qrCodeService");
 const path = require("path");
 const fs = require("fs");
 
+const toImagePath = (val) => {
+  if (!val || val === "") return null;
+  if (val.startsWith("http://") || val.startsWith("https://")) {
+    try {
+      return new URL(val).pathname;
+    } catch {
+      const i = val.indexOf("/uploads");
+      return i !== -1 ? val.substring(i) : val;
+    }
+  }
+  return val.startsWith("/") ? val : `/${val}`;
+};
+
 // ==================== SUBMIT PAYMENT (SCREENSHOT UPLOAD) ====================
 const submitPayment = async (req, res) => {
   try {
@@ -103,13 +116,7 @@ const submitPayment = async (req, res) => {
       }
     }
 
-    // Create screenshot URL (relative path)
     const screenshotUrl = `/uploads/payments/${req.file.filename}`;
-
-    // Get base URL for full screenshot URL
-    const baseUrl =
-      process.env.BASE_URL || `http://localhost:${process.env.PORT || 5001}`;
-    const screenshotUrlFull = `${baseUrl}${screenshotUrl}`;
 
     // If existing payment found, update it; otherwise create new
     let payment;
@@ -136,9 +143,8 @@ const submitPayment = async (req, res) => {
       await payment.save();
     }
 
-    // Update ticket status to payment_in_review and store screenshot URL
     ticket.status = "payment_in_review";
-    ticket.paymentScreenshotUrl = screenshotUrlFull;
+    ticket.paymentScreenshotUrl = screenshotUrl;
     await ticket.save();
 
     // Minimal professional log
@@ -158,7 +164,6 @@ const submitPayment = async (req, res) => {
         method: payment.method,
         status: payment.status,
         screenshotUrl: payment.screenshotUrl,
-        screenshotUrlFull: screenshotUrlFull,
         createdAt: payment.createdAt,
       },
       ticket: {
@@ -221,15 +226,6 @@ const verifyPayment = async (req, res) => {
 
     await payment.save();
 
-    // Get base URL for screenshot
-    const baseUrl =
-      process.env.BASE_URL || `http://localhost:${process.env.PORT || 5001}`;
-    const screenshotUrlFull = payment.screenshotUrl
-      ? payment.screenshotUrl.startsWith("http")
-        ? payment.screenshotUrl
-        : `${baseUrl}${payment.screenshotUrl}`
-      : null;
-
     // If approved, generate QR code from existing accessKey, update ticket status
     if (action === "approve") {
       const ticket = await TicketModel.findById(payment.ticketId);
@@ -263,8 +259,7 @@ const verifyPayment = async (req, res) => {
           id: payment._id,
           status: payment.status,
           adminNote: payment.adminNote,
-          screenshotUrl: payment.screenshotUrl,
-          screenshotUrlFull: screenshotUrlFull,
+          screenshotUrl: toImagePath(payment.screenshotUrl),
           verifiedAt: payment.verifiedAt,
         },
         ticket: {
@@ -289,8 +284,7 @@ const verifyPayment = async (req, res) => {
         id: payment._id,
         status: payment.status,
         adminNote: payment.adminNote,
-        screenshotUrl: payment.screenshotUrl,
-        screenshotUrlFull: screenshotUrlFull,
+        screenshotUrl: toImagePath(payment.screenshotUrl),
         verifiedAt: payment.verifiedAt,
       },
       ticket: {
@@ -317,15 +311,8 @@ const getMyPayments = async (req, res) => {
       .populate("eventId", "title date time location ticketPrice")
       .sort({ createdAt: -1 });
 
-    const baseUrl =
-      process.env.BASE_URL || `http://localhost:${process.env.PORT || 5001}`;
-
     const formattedPayments = payments.map((payment) => {
-      const screenshotUrl = payment.screenshotUrl
-        ? payment.screenshotUrl.startsWith("http")
-          ? payment.screenshotUrl
-          : `${baseUrl}${payment.screenshotUrl}`
-        : null;
+      const screenshotUrl = toImagePath(payment.screenshotUrl);
 
       return {
         id: payment._id,
@@ -333,8 +320,7 @@ const getMyPayments = async (req, res) => {
         event: payment.eventId,
         amount: payment.amount,
         method: payment.method,
-        screenshotUrl: payment.screenshotUrl,
-        screenshotUrlFull: screenshotUrl,
+        screenshotUrl: screenshotUrl,
         status: payment.status,
         adminNote: payment.adminNote,
         verifiedAt: payment.verifiedAt,
@@ -388,13 +374,7 @@ const getPaymentById = async (req, res) => {
       });
     }
 
-    const baseUrl =
-      process.env.BASE_URL || `http://localhost:${process.env.PORT || 5001}`;
-    const screenshotUrl = payment.screenshotUrl
-      ? payment.screenshotUrl.startsWith("http")
-        ? payment.screenshotUrl
-        : `${baseUrl}${payment.screenshotUrl}`
-      : null;
+    const screenshotUrl = toImagePath(payment.screenshotUrl);
 
     return res.status(200).json({
       success: true,
@@ -405,8 +385,7 @@ const getPaymentById = async (req, res) => {
         user: payment.userId,
         amount: payment.amount,
         method: payment.method,
-        screenshotUrl: payment.screenshotUrl,
-        screenshotUrlFull: screenshotUrl,
+        screenshotUrl: screenshotUrl,
         status: payment.status,
         adminNote: payment.adminNote,
         verifiedAt: payment.verifiedAt,
@@ -447,15 +426,8 @@ const getPendingPayments = async (req, res) => {
       .limit(limitNum)
       .lean();
 
-    const baseUrl =
-      process.env.BASE_URL || `http://localhost:${process.env.PORT || 5001}`;
-
     const formattedPayments = payments.map((payment) => {
-      const screenshotUrl = payment.screenshotUrl
-        ? payment.screenshotUrl.startsWith("http")
-          ? payment.screenshotUrl
-          : `${baseUrl}${payment.screenshotUrl}`
-        : null;
+      const screenshotUrl = toImagePath(payment.screenshotUrl);
 
       return {
         id: payment._id,
@@ -464,8 +436,7 @@ const getPendingPayments = async (req, res) => {
         user: payment.userId,
         amount: payment.amount,
         method: payment.method,
-        screenshotUrl: payment.screenshotUrl,
-        screenshotUrlFull: screenshotUrl,
+        screenshotUrl: screenshotUrl,
         status: payment.status,
         createdAt: payment.createdAt,
       };

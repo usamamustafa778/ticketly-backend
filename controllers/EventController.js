@@ -1,52 +1,38 @@
 const EventModel = require("../models/EventModel");
 const UserModel = require("../models/UserModel");
 
-// Helper function to format event image URLs (returns both relative and full URL)
-// Similar to profile images (profileImage + profileImageUrl) and payment images (screenshotUrl + paymentScreenshotUrl)
-// Uses same base URL logic as profile images: process.env.BASE_URL || http://localhost:${PORT || 5001}
-const formatEventImage = (imagePath) => {
-  // Use same base URL construction as profile images
-  const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5001}`;
-
-  if (!imagePath || imagePath === "") {
-    return {
-      image: null,
-      imageUrl: null,
-    };
-  }
-
-  // If it's already a full URL, extract the relative path and reconstruct with current baseUrl
-  if (imagePath.startsWith("http://") || imagePath.startsWith("https://")) {
+// Normalize image to relative path for DB storage (never store full URLs)
+const normalizeImageToRelativePath = (imageInput) => {
+  if (!imageInput || imageInput === "") return "";
+  if (imageInput.startsWith("/uploads/")) return imageInput;
+  if (imageInput.startsWith("http://") || imageInput.startsWith("https://")) {
     try {
-      const url = new URL(imagePath);
-      const relativePath = url.pathname;
-      // Reconstruct URL using current baseUrl (same as profile images)
-      return {
-        image: relativePath,
-        imageUrl: `${baseUrl}${relativePath}`,
-      };
+      const url = new URL(imageInput);
+      return url.pathname;
     } catch {
-      // If URL parsing fails, treat as relative path
-      return {
-        image: imagePath,
-        imageUrl: `${baseUrl}${imagePath}`,
-      };
+      return imageInput;
     }
   }
+  return imageInput.startsWith("/") ? imageInput : `/${imageInput}`;
+};
 
-  // If it's a relative path (starts with /uploads/), construct full URL using same baseUrl as profile
-  if (imagePath.startsWith("/uploads/")) {
-    return {
-      image: imagePath,
-      imageUrl: `${baseUrl}${imagePath}`,
-    };
+// Return only relative path for imageUrl (no base URL) - client constructs full URL from API_BASE_URL
+const formatEventImage = (imagePath) => {
+  if (!imagePath || imagePath === "") return { imageUrl: null };
+
+  // Extract path from full URL if stored (legacy), otherwise use as path
+  let path = imagePath;
+  if (imagePath.startsWith("http://") || imagePath.startsWith("https://")) {
+    try {
+      path = new URL(imagePath).pathname;
+    } catch {
+      const i = imagePath.indexOf("/uploads");
+      path = i !== -1 ? imagePath.substring(i) : imagePath;
+    }
+  } else if (!path.startsWith("/")) {
+    path = `/${path}`;
   }
-
-  // Otherwise return as is (could be external URL or empty)
-  return {
-    image: imagePath,
-    imageUrl: imagePath,
-  };
+  return { imageUrl: path };
 };
 
 // ==================== CREATE EVENT ====================
@@ -65,6 +51,9 @@ const createEvent = async (req, res) => {
       totalTickets,
     } = req.body;
 
+    // Store only relative path in DB (never full URLs)
+    const imagePathToStore = normalizeImageToRelativePath(image);
+
     // Create event with status = "pending"
     const event = new EventModel({
       title,
@@ -72,7 +61,7 @@ const createEvent = async (req, res) => {
       date,
       time,
       location,
-      image: image || "",
+      image: imagePathToStore,
       email,
       phone,
       ticketPrice,
@@ -108,7 +97,6 @@ const createEvent = async (req, res) => {
         date: event.date,
         time: event.time,
         location: event.location,
-        image: eventImage.image,
         imageUrl: eventImage.imageUrl,
         email: event.email,
         phone: event.phone,
@@ -128,12 +116,18 @@ const createEvent = async (req, res) => {
   }
 };
 
-// Helper to format user profile image URL for joinedUsers
+// Return only relative path (no base URL) - client constructs full URL from API_BASE_URL
 const formatProfileImageUrl = (profileImage) => {
-  const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5001}`;
   if (!profileImage || profileImage === "") return null;
-  if (profileImage.startsWith("http://") || profileImage.startsWith("https://")) return profileImage;
-  return profileImage.startsWith("/") ? `${baseUrl}${profileImage}` : `${baseUrl}/${profileImage}`;
+  if (profileImage.startsWith("http://") || profileImage.startsWith("https://")) {
+    try {
+      return new URL(profileImage).pathname;
+    } catch {
+      const i = profileImage.indexOf("/uploads");
+      return i !== -1 ? profileImage.substring(i) : profileImage;
+    }
+  }
+  return profileImage.startsWith("/") ? profileImage : `/${profileImage}`;
 };
 
 // ==================== GET ALL APPROVED EVENTS (PUBLIC) ====================
@@ -183,7 +177,6 @@ const getApprovedEvents = async (req, res) => {
           date: event.date,
           time: event.time,
           location: event.location,
-          image: eventImage.image,
           imageUrl: eventImage.imageUrl,
           ticketPrice: event.ticketPrice,
           totalTickets: event.totalTickets,
@@ -265,7 +258,6 @@ const getMyEvents = async (req, res) => {
         date: event.date,
         time: event.time,
         location: event.location,
-        image: eventImage.image,
         imageUrl: eventImage.imageUrl,
         email: event.email,
         phone: event.phone,
@@ -348,7 +340,6 @@ const getEventById = async (req, res) => {
         date: event.date,
         time: event.time,
         location: event.location,
-        image: eventImage.image,
         imageUrl: eventImage.imageUrl,
         email: event.email,
         phone: event.phone,
@@ -482,14 +473,14 @@ const updateEvent = async (req, res) => {
       });
     }
 
-    // Update fields
+    // Update fields - normalize image to relative path for storage
     const updateData = {};
     if (title) updateData.title = title;
     if (description) updateData.description = description;
     if (date) updateData.date = date;
     if (time) updateData.time = time;
     if (location) updateData.location = location;
-    if (image !== undefined) updateData.image = image;
+    if (image !== undefined) updateData.image = normalizeImageToRelativePath(image);
     if (email) updateData.email = email;
     if (phone) updateData.phone = phone;
     if (ticketPrice !== undefined) updateData.ticketPrice = ticketPrice;
@@ -514,7 +505,6 @@ const updateEvent = async (req, res) => {
         date: updatedEvent.date,
         time: updatedEvent.time,
         location: updatedEvent.location,
-        image: eventImage.image,
         imageUrl: eventImage.imageUrl,
         email: updatedEvent.email,
         phone: updatedEvent.phone,
@@ -595,7 +585,6 @@ const getPendingEvents = async (req, res) => {
         date: event.date,
         time: event.time,
         location: event.location,
-        image: eventImage.image,
         imageUrl: eventImage.imageUrl,
         email: event.email,
         phone: event.phone,
@@ -711,40 +700,18 @@ const uploadEventImage = async (req, res) => {
       });
     }
 
-    // Create image URL (relative path that will be served statically)
-    // The server serves /uploads as static files, so the URL will be accessible
+    // Return only relative path - client constructs full URL from API_BASE_URL
     const imagePath = `/uploads/events/${req.file.filename}`;
-
-    // Get base URL for full image URL (same logic as profile image upload)
-    // Construct from request if BASE_URL not set (handles both HTTP and HTTPS)
-    let baseUrl = process.env.BASE_URL;
-    if (!baseUrl) {
-      const protocol = req.protocol || "http";
-      const host = req.get("host") || `localhost:${process.env.PORT || 5001}`;
-      baseUrl = `${protocol}://${host}`;
-    }
-    const fullImageUrl = `${baseUrl}${imagePath}`;
-
-    // Format event image URLs (both relative and full URL)
-    const eventImage = {
-      image: imagePath,
-      imageUrl: fullImageUrl,
-    };
 
     console.log("✅ Image uploaded successfully:");
     console.log("  - Filename:", req.file.filename);
-    console.log("  - Original name:", req.file.originalname);
-    console.log("  - MIME type:", req.file.mimetype);
-    console.log("  - Size:", req.file.size, "bytes");
-    console.log("  - Relative path:", eventImage.image);
-    console.log("  - Full URL:", eventImage.imageUrl);
+    console.log("  - Path:", imagePath);
     console.log("========================================");
 
     return res.status(200).json({
       success: true,
       message: "Image uploaded successfully",
-      image: eventImage.image,
-      imageUrl: eventImage.imageUrl,
+      imageUrl: imagePath,
     });
   } catch (error) {
     console.error("❌ Error uploading event image:", {

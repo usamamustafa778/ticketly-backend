@@ -8,6 +8,20 @@ const TicketModel = require("../models/TicketModel");
 const EventModel = require("../models/EventModel");
 const { sendOtpEmail, isEmailConfigured } = require("../utils/emailService");
 
+// Return only relative path (no base URL) - client constructs full URL from API_BASE_URL
+const toImagePath = (val) => {
+  if (!val || val === "") return null;
+  if (val.startsWith("http://") || val.startsWith("https://")) {
+    try {
+      return new URL(val).pathname;
+    } catch {
+      const i = val.indexOf("/uploads");
+      return i !== -1 ? val.substring(i) : val;
+    }
+  }
+  return val.startsWith("/") ? val : `/${val}`;
+};
+
 // ==================== HELPER: Generate Access & Refresh Tokens ====================
 const generateTokens = async (userId) => {
   // Generate Access Token (short-lived: 15 minutes)
@@ -446,17 +460,6 @@ const getUserProfile = async (req, res) => {
       });
     });
 
-    // Get base URL for profile image (use same baseUrl for event images)
-    const baseUrl =
-      process.env.BASE_URL || `http://localhost:${process.env.PORT || 5001}`;
-
-    // Helper to format user profile image URL for joinedUsers
-    const formatProfileImageUrl = (profileImage) => {
-      if (!profileImage || profileImage === "") return null;
-      if (profileImage.startsWith("http://") || profileImage.startsWith("https://")) return profileImage;
-      return profileImage.startsWith("/") ? `${baseUrl}${profileImage}` : `${baseUrl}/${profileImage}`;
-    };
-
     // Build joinedUsers list per event (for created, joined, and liked events)
     const allProfileEventIds = [
       ...(createdEvents.map((e) => e._id)),
@@ -469,7 +472,7 @@ const getUserProfile = async (req, res) => {
     const joinedByEventId = {};
     allProfileEventIds.forEach((id) => (joinedByEventId[id.toString()] = []));
     for (const u of usersWhoJoined) {
-      const profileImageUrl = formatProfileImageUrl(u.profileImage);
+      const profileImageUrl = toImagePath(u.profileImage);
       const userInfo = {
         _id: u._id,
         fullName: u.fullName || u.username || "User",
@@ -482,53 +485,9 @@ const getUserProfile = async (req, res) => {
       });
     }
 
-    // Helper function to format event image URLs (use same baseUrl as profile images)
-    const formatEventImage = (imagePath) => {
-      if (!imagePath || imagePath === "") {
-        return {
-          image: null,
-          imageUrl: null,
-        };
-      }
-
-      // If it's already a full URL, extract the relative path and reconstruct with current baseUrl
-      if (imagePath.startsWith("http://") || imagePath.startsWith("https://")) {
-        try {
-          const url = new URL(imagePath);
-          const relativePath = url.pathname;
-          // Reconstruct URL using current baseUrl (same as profile images)
-          return {
-            image: relativePath,
-            imageUrl: `${baseUrl}${relativePath}`,
-          };
-        } catch {
-          // If URL parsing fails, treat as relative path
-          return {
-            image: imagePath,
-            imageUrl: `${baseUrl}${imagePath}`,
-          };
-        }
-      }
-
-      // If it's a relative path (starts with /uploads/), construct full URL using same baseUrl as profile
-      if (imagePath.startsWith("/uploads/")) {
-        return {
-          image: imagePath,
-          imageUrl: `${baseUrl}${imagePath}`,
-        };
-      }
-
-      // Otherwise return as is (could be external URL or empty)
-      return {
-        image: imagePath,
-        imageUrl: imagePath,
-      };
-    };
-
     // Format joinedEvents with their tickets (include joinedUsers from backend)
     const joinedEventsData = events.map((event) => {
       const eventIdStr = event._id.toString();
-      const eventImage = formatEventImage(event.image);
       const joinedUsers = joinedByEventId[eventIdStr] || [];
       const formattedEvent = {
         id: event._id,
@@ -537,8 +496,7 @@ const getUserProfile = async (req, res) => {
         date: event.date,
         time: event.time,
         location: event.location,
-        image: eventImage.image,
-        imageUrl: eventImage.imageUrl,
+        imageUrl: toImagePath(event.image),
         email: event.email,
         phone: event.phone,
         ticketPrice: event.ticketPrice,
@@ -559,7 +517,6 @@ const getUserProfile = async (req, res) => {
 
     // Format createdEvents (include joinedUsers from backend)
     const formattedCreatedEvents = createdEvents.map((event) => {
-      const eventImage = formatEventImage(event.image);
       const joinedUsers = joinedByEventId[event._id.toString()] || [];
       return {
         id: event._id,
@@ -568,8 +525,7 @@ const getUserProfile = async (req, res) => {
         date: event.date,
         time: event.time,
         location: event.location,
-        image: eventImage.image,
-        imageUrl: eventImage.imageUrl,
+        imageUrl: toImagePath(event.image),
         email: event.email,
         phone: event.phone,
         ticketPrice: event.ticketPrice,
@@ -585,7 +541,6 @@ const getUserProfile = async (req, res) => {
 
     // Format likedEvents (include joinedUsers from backend)
     const formattedLikedEvents = likedEvents.map((event) => {
-      const eventImage = formatEventImage(event.image);
       const joinedUsers = joinedByEventId[event._id.toString()] || [];
       return {
         id: event._id,
@@ -594,8 +549,7 @@ const getUserProfile = async (req, res) => {
         date: event.date,
         time: event.time,
         location: event.location,
-        image: eventImage.image,
-        imageUrl: eventImage.imageUrl,
+        imageUrl: toImagePath(event.image),
         email: event.email,
         phone: event.phone,
         ticketPrice: event.ticketPrice,
@@ -609,11 +563,7 @@ const getUserProfile = async (req, res) => {
       };
     });
 
-    const profileImageUrl = user.profileImage
-      ? user.profileImage.startsWith("http")
-        ? user.profileImage
-        : `${baseUrl}${user.profileImage}`
-      : null;
+    const profileImageUrl = toImagePath(user.profileImage);
 
     return res.status(200).json({
       success: true,
@@ -625,7 +575,6 @@ const getUserProfile = async (req, res) => {
         authProvider: user.authProvider,
         role: user.role,
         isVerified: user.isVerified,
-        profileImage: user.profileImage || null,
         profileImageUrl: profileImageUrl,
         createdEvents: formattedCreatedEvents,
         joinedEvents: joinedEventsData,
@@ -652,31 +601,6 @@ const getUserProfileById = async (req, res) => {
         message: "User not found",
       });
     }
-
-    const baseUrl =
-      process.env.BASE_URL || `http://localhost:${process.env.PORT || 5001}`;
-
-    const formatProfileImageUrl = (profileImage) => {
-      if (!profileImage || profileImage === "") return null;
-      if (profileImage.startsWith("http://") || profileImage.startsWith("https://")) return profileImage;
-      return profileImage.startsWith("/") ? `${baseUrl}${profileImage}` : `${baseUrl}/${profileImage}`;
-    };
-
-    const formatEventImage = (imagePath) => {
-      if (!imagePath || imagePath === "") return { image: null, imageUrl: null };
-      if (imagePath.startsWith("http://") || imagePath.startsWith("https://")) {
-        try {
-          const url = new URL(imagePath);
-          return { image: url.pathname, imageUrl: `${baseUrl}${url.pathname}` };
-        } catch {
-          return { image: imagePath, imageUrl: `${baseUrl}${imagePath}` };
-        }
-      }
-      if (imagePath.startsWith("/uploads/")) {
-        return { image: imagePath, imageUrl: `${baseUrl}${imagePath}` };
-      }
-      return { image: imagePath, imageUrl: imagePath };
-    };
 
     // Populate createdEvents (only approved/draft for public view)
     const createdEvents = await EventModel.find({
@@ -729,7 +653,7 @@ const getUserProfileById = async (req, res) => {
     const joinedByEventId = {};
     allProfileEventIds.forEach((id) => (joinedByEventId[id.toString()] = []));
     for (const u of usersWhoJoined) {
-      const profileImageUrl = formatProfileImageUrl(u.profileImage);
+      const profileImageUrl = toImagePath(u.profileImage);
       const userInfo = {
         _id: u._id,
         fullName: u.fullName || u.username || "User",
@@ -744,7 +668,7 @@ const getUserProfileById = async (req, res) => {
 
     const joinedEventsData = events.map((event) => {
       const eventIdStr = event._id.toString();
-      const eventImage = formatEventImage(event.image);
+      const eventImageUrl = toImagePath(event.image);
       const joinedUsers = joinedByEventId[eventIdStr] || [];
       return {
         event: {
@@ -754,8 +678,7 @@ const getUserProfileById = async (req, res) => {
           date: event.date,
           time: event.time,
           location: event.location,
-          image: eventImage.image,
-          imageUrl: eventImage.imageUrl,
+          imageUrl: eventImageUrl,
           email: event.email,
           phone: event.phone,
           ticketPrice: event.ticketPrice,
@@ -772,7 +695,7 @@ const getUserProfileById = async (req, res) => {
     });
 
     const formatEvent = (event) => {
-      const eventImage = formatEventImage(event.image);
+      const eventImageUrl = toImagePath(event.image);
       const joinedUsers = joinedByEventId[event._id.toString()] || [];
       return {
         id: event._id,
@@ -781,8 +704,7 @@ const getUserProfileById = async (req, res) => {
         date: event.date,
         time: event.time,
         location: event.location,
-        image: eventImage.image,
-        imageUrl: eventImage.imageUrl,
+        imageUrl: eventImageUrl,
         email: event.email,
         phone: event.phone,
         ticketPrice: event.ticketPrice,
@@ -799,11 +721,7 @@ const getUserProfileById = async (req, res) => {
     const formattedCreatedEvents = createdEvents.map(formatEvent);
     const formattedLikedEvents = likedEvents.map(formatEvent);
 
-    const profileImageUrl = user.profileImage
-      ? user.profileImage.startsWith("http")
-        ? user.profileImage
-        : `${baseUrl}${user.profileImage}`
-      : null;
+    const profileImageUrl = toImagePath(user.profileImage);
 
     return res.status(200).json({
       success: true,
@@ -812,7 +730,6 @@ const getUserProfileById = async (req, res) => {
         id: user._id,
         fullName: user.fullName || user.name,
         username: user.username,
-        profileImage: user.profileImage || null,
         profileImageUrl: profileImageUrl,
         companyName: user.companyName || null,
         likedEventsVisibility: user.likedEventsVisibility || "public",
@@ -832,15 +749,9 @@ const getAllUsers = async (req, res) => {
     // This endpoint is protected by requireAdmin middleware
     // Only admin can access this endpoint
     const users = await UserModel.find().select("-password");
-    const baseUrl =
-      process.env.BASE_URL || `http://localhost:${process.env.PORT || 5001}`;
 
     const formattedUsers = users.map((user) => {
-      const profileImageUrl = user.profileImage
-        ? user.profileImage.startsWith("http")
-          ? user.profileImage
-          : `${baseUrl}${user.profileImage}`
-        : null;
+      const profileImageUrl = toImagePath(user.profileImage);
 
       return {
         id: user._id,
@@ -850,7 +761,6 @@ const getAllUsers = async (req, res) => {
         authProvider: user.authProvider,
         role: user.role,
         isVerified: user.isVerified,
-        profileImage: user.profileImage || null,
         profileImageUrl: profileImageUrl,
         createdEvents: user.createdEvents || [],
         joinedEvents: user.joinedEvents || [],
@@ -919,13 +829,7 @@ const updateUser = async (req, res) => {
       });
     }
 
-    const baseUrl =
-      process.env.BASE_URL || `http://localhost:${process.env.PORT || 5001}`;
-    const profileImageUrl = updatedUser.profileImage
-      ? updatedUser.profileImage.startsWith("http")
-        ? updatedUser.profileImage
-        : `${baseUrl}${updatedUser.profileImage}`
-      : null;
+    const profileImageUrl = toImagePath(updatedUser.profileImage);
 
     return res.status(200).json({
       success: true,
@@ -938,7 +842,6 @@ const updateUser = async (req, res) => {
         authProvider: updatedUser.authProvider,
         role: updatedUser.role,
         isVerified: updatedUser.isVerified,
-        profileImage: updatedUser.profileImage || null,
         profileImageUrl: profileImageUrl,
         createdEvents: updatedUser.createdEvents || [],
         joinedEvents: updatedUser.joinedEvents || [],
@@ -1045,13 +948,7 @@ const updateUserByAdmin = async (req, res) => {
       });
     }
 
-    const baseUrl =
-      process.env.BASE_URL || `http://localhost:${process.env.PORT || 5001}`;
-    const profileImageUrl = updatedUser.profileImage
-      ? updatedUser.profileImage.startsWith("http")
-        ? updatedUser.profileImage
-        : `${baseUrl}${updatedUser.profileImage}`
-      : null;
+    const profileImageUrl = toImagePath(updatedUser.profileImage);
 
     return res.status(200).json({
       success: true,
@@ -1064,7 +961,6 @@ const updateUserByAdmin = async (req, res) => {
         authProvider: updatedUser.authProvider,
         role: updatedUser.role,
         isVerified: updatedUser.isVerified,
-        profileImage: updatedUser.profileImage || null,
         profileImageUrl: profileImageUrl,
         createdEvents: updatedUser.createdEvents || [],
         joinedEvents: updatedUser.joinedEvents || [],
@@ -1200,42 +1096,27 @@ const uploadProfileImage = async (req, res) => {
       }
     }
 
-    // Create profile image URL (relative path)
-    const profileImageUrl = `/uploads/profiles/${req.file.filename}`;
+    // Return only relative path - client constructs full URL from API_BASE_URL
+    const profileImagePath = `/uploads/profiles/${req.file.filename}`;
 
     // Update user profile image
-    user.profileImage = profileImageUrl;
+    user.profileImage = profileImagePath;
     await user.save();
-
-    // Get base URL for full image URL
-    // Construct from request if BASE_URL not set (handles both HTTP and HTTPS)
-    let baseUrl = process.env.BASE_URL;
-    if (!baseUrl) {
-      const protocol = req.protocol || "http";
-      const host = req.get("host") || `localhost:${process.env.PORT || 5001}`;
-      baseUrl = `${protocol}://${host}`;
-    }
-    const fullImageUrl = `${baseUrl}${profileImageUrl}`;
 
     console.log("✅ Profile image uploaded successfully:");
     console.log("  - Filename:", req.file.filename);
-    console.log("  - Original name:", req.file.originalname);
-    console.log("  - MIME type:", req.file.mimetype);
-    console.log("  - Size:", req.file.size, "bytes");
-    console.log("  - Full URL:", fullImageUrl);
-    console.log("  - User ID:", userId);
+    console.log("  - Path:", profileImagePath);
 
     return res.status(200).json({
       success: true,
       message: "Profile image uploaded successfully",
-      profileImage: profileImageUrl,
-      profileImageUrl: fullImageUrl,
+      profileImageUrl: profileImagePath,
       user: {
         id: user._id,
         fullName: user.fullName || user.name,
         username: user.username,
         email: user.email,
-        profileImage: user.profileImage,
+        profileImageUrl: profileImagePath,
         role: user.role,
       },
     });
