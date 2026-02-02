@@ -64,6 +64,16 @@ const EventSchema = new mongoose.Schema({
     enum: ["pending", "approved"],
     default: "pending",
   },
+  ticketTheme: {
+    gradientStart: { type: String },
+    gradientEnd: { type: String },
+    primaryTextColor: { type: String },
+    accentColor: { type: String },
+    brandColor: { type: String },
+    gradientDirection: { type: String },
+    backgroundElement: { type: String },
+    patternWeight: { type: String },
+  },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",

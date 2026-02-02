@@ -522,6 +522,7 @@ const getUserProfile = async (req, res) => {
         joinedUsers,
         joinedCount: joinedUsers.length,
       };
+      if (event.ticketTheme) formattedEvent.ticketTheme = event.ticketTheme;
 
       return {
         event: formattedEvent,
@@ -532,7 +533,7 @@ const getUserProfile = async (req, res) => {
     // Format createdEvents (include joinedUsers from backend)
     const formattedCreatedEvents = createdEvents.map((event) => {
       const joinedUsers = joinedByEventId[event._id.toString()] || [];
-      return {
+      const out = {
         id: event._id,
         title: event.title,
         description: event.description,
@@ -552,12 +553,14 @@ const getUserProfile = async (req, res) => {
         joinedUsers,
         joinedCount: joinedUsers.length,
       };
+      if (event.ticketTheme) out.ticketTheme = event.ticketTheme;
+      return out;
     });
 
     // Format likedEvents (include joinedUsers from backend)
     const formattedLikedEvents = likedEvents.map((event) => {
       const joinedUsers = joinedByEventId[event._id.toString()] || [];
-      return {
+      const out = {
         id: event._id,
         title: event.title,
         description: event.description,
@@ -577,6 +580,8 @@ const getUserProfile = async (req, res) => {
         joinedUsers,
         joinedCount: joinedUsers.length,
       };
+      if (event.ticketTheme) out.ticketTheme = event.ticketTheme;
+      return out;
     });
 
     const profileImageUrl = toImagePath(user.profileImage);
@@ -699,35 +704,7 @@ const getUserProfileById = async (req, res) => {
       const eventIdStr = event._id.toString();
       const eventImageUrl = toImagePath(event.image);
       const joinedUsers = joinedByEventId[eventIdStr] || [];
-      return {
-        event: {
-          id: event._id,
-          title: event.title,
-          description: event.description,
-          date: event.date,
-          time: event.time,
-          location: event.location,
-          imageUrl: eventImageUrl,
-          email: event.email,
-          phone: event.phone,
-          gender: event.gender,
-          ticketPrice: event.ticketPrice,
-          totalTickets: event.totalTickets,
-          status: event.status,
-          createdBy: formatCreatedByPublic(event.createdBy),
-          createdAt: event.createdAt,
-          updatedAt: event.updatedAt,
-          joinedUsers,
-          joinedCount: joinedUsers.length,
-        },
-        tickets: ticketsByEventId[eventIdStr] || [],
-      };
-    });
-
-    const formatEvent = (event) => {
-      const eventImageUrl = toImagePath(event.image);
-      const joinedUsers = joinedByEventId[event._id.toString()] || [];
-      return {
+      const eventObj = {
         id: event._id,
         title: event.title,
         description: event.description,
@@ -747,6 +724,38 @@ const getUserProfileById = async (req, res) => {
         joinedUsers,
         joinedCount: joinedUsers.length,
       };
+      if (event.ticketTheme) eventObj.ticketTheme = event.ticketTheme;
+      return {
+        event: eventObj,
+        tickets: ticketsByEventId[eventIdStr] || [],
+      };
+    });
+
+    const formatEvent = (event) => {
+      const eventImageUrl = toImagePath(event.image);
+      const joinedUsers = joinedByEventId[event._id.toString()] || [];
+      const out = {
+        id: event._id,
+        title: event.title,
+        description: event.description,
+        date: event.date,
+        time: event.time,
+        location: event.location,
+        imageUrl: eventImageUrl,
+        email: event.email,
+        phone: event.phone,
+        gender: event.gender,
+        ticketPrice: event.ticketPrice,
+        totalTickets: event.totalTickets,
+        status: event.status,
+        createdBy: formatCreatedByPublic(event.createdBy),
+        createdAt: event.createdAt,
+        updatedAt: event.updatedAt,
+        joinedUsers,
+        joinedCount: joinedUsers.length,
+      };
+      if (event.ticketTheme) out.ticketTheme = event.ticketTheme;
+      return out;
     };
 
     const formattedCreatedEvents = createdEvents.map(formatEvent);
