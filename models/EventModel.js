@@ -65,14 +65,8 @@ const EventSchema = new mongoose.Schema({
     default: "pending",
   },
   ticketTheme: {
-    gradientStart: { type: String },
-    gradientEnd: { type: String },
-    primaryTextColor: { type: String },
-    accentColor: { type: String },
-    brandColor: { type: String },
-    gradientDirection: { type: String },
-    backgroundElement: { type: String },
-    patternWeight: { type: String },
+    type: mongoose.Schema.Types.Mixed,
+    default: null,
   },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,

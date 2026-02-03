@@ -71,10 +71,8 @@ const createEvent = async (req, res) => {
       totalTickets: totalTickets ?? 0,
       status: "pending",
       createdBy: req.userId,
+      ...(ticketTheme && typeof ticketTheme === "object" && { ticketTheme }),
     };
-    if (ticketTheme && typeof ticketTheme === "object") {
-      eventData.ticketTheme = ticketTheme;
-    }
 
     const event = new EventModel(eventData);
 
@@ -222,6 +220,7 @@ const getApprovedEvents = async (req, res) => {
           ticketPrice: event.ticketPrice,
           totalTickets: event.totalTickets,
           remainingTickets,
+          ticketTheme: event.ticketTheme || null,
           createdAt: event.createdAt,
           createdBy: formatCreatedByWithProfileImage(event.createdBy),
           joinedUsers,
@@ -243,6 +242,7 @@ const getApprovedEvents = async (req, res) => {
           gender: event.gender,
           ticketPrice: event.ticketPrice,
           totalTickets: event.totalTickets,
+          ticketTheme: event.ticketTheme || null,
           createdAt: event.createdAt,
           createdBy: formatCreatedByWithProfileImage(event.createdBy),
           joinedUsers,
@@ -312,6 +312,7 @@ const getMyEvents = async (req, res) => {
         ticketPrice: event.ticketPrice,
         totalTickets: event.totalTickets,
         status: event.status,
+        ticketTheme: event.ticketTheme || null,
         createdBy: formatCreatedByWithProfileImage(event.createdBy),
         createdAt: event.createdAt,
         updatedAt: event.updatedAt,
@@ -664,6 +665,7 @@ const getPendingEvents = async (req, res) => {
         ticketPrice: event.ticketPrice,
         totalTickets: event.totalTickets,
         status: event.status,
+        ticketTheme: event.ticketTheme || null,
         createdBy: formatCreatedByWithProfileImage(event.createdBy),
         createdAt: event.createdAt,
         updatedAt: event.updatedAt,

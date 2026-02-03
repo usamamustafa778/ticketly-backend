@@ -1,5 +1,24 @@
 const joi = require("joi");
 
+// Ticket theme schema - allowed on events for custom ticket appearance
+const ticketThemeSchema = joi
+  .object({
+    gradientStart: joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).optional(),
+    gradientEnd: joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).optional(),
+    primaryTextColor: joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).optional(),
+    accentColor: joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).optional(),
+    brandColor: joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).optional(),
+    gradientDirection: joi.string().optional(),
+    backgroundElement: joi.string().valid(
+      "none", "organic", "fluid", "grid", "geometric", "mesh", "gradient_mesh", "vector", "dynamic"
+    ).optional(),
+    patternWeight: joi.string().valid(
+      "sharper", "sharp", "thin", "medium", "thick", "thicker"
+    ).optional(),
+  })
+  .unknown(true)
+  .optional();
+
 const createEventValidation = (req, res, next) => {
   try {
     const schema = joi.object({
