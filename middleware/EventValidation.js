@@ -14,22 +14,7 @@ const createEventValidation = (req, res, next) => {
       gender: joi.string().valid("male", "female", "all").optional(),
       ticketPrice: joi.number().min(0).required(),
       totalTickets: joi.number().integer().min(0).optional(),
-      ticketTheme: joi
-        .object({
-          gradientStart: joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).optional(),
-          gradientEnd: joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).optional(),
-          primaryTextColor: joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).optional(),
-          accentColor: joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).optional(),
-          brandColor: joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).optional(),
-          gradientDirection: joi.string().optional(),
-          backgroundElement: joi.string().valid(
-            "none", "organic", "fluid", "grid", "geometric", "mesh", "gradient_mesh", "vector", "dynamic"
-          ).optional(),
-          patternWeight: joi.string().valid(
-            "sharper", "sharp", "thin", "medium", "thick", "thicker"
-          ).optional(),
-        })
-        .optional(),
+      ticketTheme: ticketThemeSchema,
     });
 
     const { error } = schema.validate(req.body, { allowUnknown: true });
@@ -45,6 +30,24 @@ const createEventValidation = (req, res, next) => {
   }
 };
 
+const ticketThemeSchema = joi
+  .object({
+    gradientStart: joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).optional(),
+    gradientEnd: joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).optional(),
+    primaryTextColor: joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).optional(),
+    accentColor: joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).optional(),
+    brandColor: joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).optional(),
+    gradientDirection: joi.string().optional(),
+    backgroundElement: joi.string().valid(
+      "none", "organic", "fluid", "grid", "geometric", "mesh", "gradient_mesh", "vector", "dynamic"
+    ).optional(),
+    patternWeight: joi.string().valid(
+      "sharper", "sharp", "thin", "medium", "thick", "thicker"
+    ).optional(),
+  })
+  .unknown(true)
+  .optional();
+
 const updateEventValidation = (req, res, next) => {
   try {
     const schema = joi.object({
@@ -58,23 +61,8 @@ const updateEventValidation = (req, res, next) => {
       phone: joi.string(),
       gender: joi.string().valid("male", "female", "all"),
       ticketPrice: joi.number().min(0),
-      totalTickets: joi.number().integer().min(1),
-      ticketTheme: joi
-        .object({
-          gradientStart: joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).optional(),
-          gradientEnd: joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).optional(),
-          primaryTextColor: joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).optional(),
-          accentColor: joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).optional(),
-          brandColor: joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).optional(),
-          gradientDirection: joi.string().optional(),
-          backgroundElement: joi.string().valid(
-            "none", "organic", "fluid", "grid", "geometric", "mesh", "gradient_mesh", "vector", "dynamic"
-          ).optional(),
-          patternWeight: joi.string().valid(
-            "sharper", "sharp", "thin", "medium", "thick", "thicker"
-          ).optional(),
-        })
-        .optional(),
+      totalTickets: joi.number().integer().min(0),
+      ticketTheme: ticketThemeSchema,
     }).min(1); // At least one field must be present
 
     const { error } = schema.validate(req.body, { allowUnknown: true });
