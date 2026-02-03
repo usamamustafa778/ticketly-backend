@@ -14,9 +14,10 @@ const createEventValidation = (req, res, next) => {
       gender: joi.string().valid("male", "female", "all").optional(),
       ticketPrice: joi.number().min(0).required(),
       totalTickets: joi.number().integer().min(0).optional(),
+      ticketTheme: ticketThemeSchema,
     });
 
-    const { error } = schema.validate(req.body);
+    const { error } = schema.validate(req.body, { allowUnknown: true });
     if (error) {
       return res.status(400).json({
         message: "Validation Error",
@@ -28,6 +29,24 @@ const createEventValidation = (req, res, next) => {
     res.status(500).json({ message: "Server Error", error: err.message });
   }
 };
+
+const ticketThemeSchema = joi
+  .object({
+    gradientStart: joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).optional(),
+    gradientEnd: joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).optional(),
+    primaryTextColor: joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).optional(),
+    accentColor: joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).optional(),
+    brandColor: joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).optional(),
+    gradientDirection: joi.string().optional(),
+    backgroundElement: joi.string().valid(
+      "none", "organic", "fluid", "grid", "geometric", "mesh", "gradient_mesh", "vector", "dynamic"
+    ).optional(),
+    patternWeight: joi.string().valid(
+      "sharper", "sharp", "thin", "medium", "thick", "thicker"
+    ).optional(),
+  })
+  .unknown(true)
+  .optional();
 
 const updateEventValidation = (req, res, next) => {
   try {
@@ -42,10 +61,11 @@ const updateEventValidation = (req, res, next) => {
       phone: joi.string(),
       gender: joi.string().valid("male", "female", "all"),
       ticketPrice: joi.number().min(0),
-      totalTickets: joi.number().integer().min(1),
+      totalTickets: joi.number().integer().min(0),
+      ticketTheme: ticketThemeSchema,
     }).min(1); // At least one field must be present
 
-    const { error } = schema.validate(req.body);
+    const { error } = schema.validate(req.body, { allowUnknown: true });
     if (error) {
       return res.status(400).json({
         message: "Validation Error",

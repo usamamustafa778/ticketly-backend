@@ -1,5 +1,6 @@
 const EventModel = require("../models/EventModel");
 const UserModel = require("../models/UserModel");
+const TicketModel = require("../models/TicketModel");
 
 // Normalize image to relative path for DB storage (never store full URLs)
 const normalizeImageToRelativePath = (imageInput) => {
@@ -50,13 +51,13 @@ const createEvent = async (req, res) => {
       gender,
       ticketPrice,
       totalTickets,
+      ticketTheme,
     } = req.body;
 
     // Store only relative path in DB (never full URLs)
     const imagePathToStore = normalizeImageToRelativePath(image);
 
-    // Create event with status = "pending" (phone and totalTickets are optional)
-    const event = new EventModel({
+    const eventData = {
       title,
       description,
       date,
@@ -70,7 +71,12 @@ const createEvent = async (req, res) => {
       totalTickets: totalTickets ?? 0,
       status: "pending",
       createdBy: req.userId,
-    });
+    };
+    if (ticketTheme && typeof ticketTheme === "object") {
+      eventData.ticketTheme = ticketTheme;
+    }
+
+    const event = new EventModel(eventData);
 
     await event.save();
 
@@ -89,26 +95,29 @@ const createEvent = async (req, res) => {
 
     const eventImage = formatEventImage(event.image);
 
+    const eventPayload = {
+      id: event._id,
+      title: event.title,
+      description: event.description,
+      date: event.date,
+      time: event.time,
+      location: event.location,
+      imageUrl: eventImage.imageUrl,
+      email: event.email,
+      phone: event.phone,
+      gender: event.gender,
+      ticketPrice: event.ticketPrice,
+      totalTickets: event.totalTickets,
+      status: event.status,
+      createdAt: event.createdAt,
+      updatedAt: event.updatedAt,
+    };
+    if (event.ticketTheme) eventPayload.ticketTheme = event.ticketTheme;
+
     return res.status(201).json({
       success: true,
       message: "Your request has been sent. We will contact you shortly.",
-      event: {
-        id: event._id,
-        title: event.title,
-        description: event.description,
-        date: event.date,
-        time: event.time,
-        location: event.location,
-        imageUrl: eventImage.imageUrl,
-        email: event.email,
-        phone: event.phone,
-        gender: event.gender,
-        ticketPrice: event.ticketPrice,
-        totalTickets: event.totalTickets,
-        status: event.status,
-        createdAt: event.createdAt,
-        updatedAt: event.updatedAt,
-      },
+      event: eventPayload,
     });
   } catch (error) {
     return res.status(500).json({
@@ -181,12 +190,27 @@ const getApprovedEvents = async (req, res) => {
       });
     }
 
-    // Format image URLs (both relative and full URL) and attach joinedUsers
+    // Pre-compute ticket counts per event to expose remainingTickets
+    const ticketCounts = await TicketModel.aggregate([
+      { $match: { eventId: { $in: eventIds }, status: { $nin: ["cancelled", "expired"] } } },
+      { $group: { _id: "$eventId", count: { $sum: 1 } } },
+    ]);
+    const ticketCountByEventId = {};
+    ticketCounts.forEach((t) => {
+      ticketCountByEventId[t._id.toString()] = t.count;
+    });
+
+    // Format image URLs (both relative and full URL), attach joinedUsers and remainingTickets
     const formattedEvents = events.map((event) => {
       const joinedUsers = joinedByEventId[event._id.toString()] || [];
       try {
+        const soldCount = ticketCountByEventId[event._id.toString()] || 0;
+        const remainingTickets =
+          event.totalTickets && event.totalTickets > 0
+            ? Math.max(0, event.totalTickets - soldCount)
+            : null;
         const eventImage = formatEventImage(event.image || "");
-        return {
+        const out = {
           _id: event._id,
           title: event.title,
           description: event.description || "",
@@ -197,14 +221,17 @@ const getApprovedEvents = async (req, res) => {
           gender: event.gender,
           ticketPrice: event.ticketPrice,
           totalTickets: event.totalTickets,
+          remainingTickets,
           createdAt: event.createdAt,
           createdBy: formatCreatedByWithProfileImage(event.createdBy),
           joinedUsers,
           joinedCount: joinedUsers.length,
         };
+        if (event.ticketTheme) out.ticketTheme = event.ticketTheme;
+        return out;
       } catch (formatError) {
         console.error("Error formatting event:", formatError);
-        return {
+        const fallback = {
           _id: event._id,
           title: event.title,
           description: event.description || "",
@@ -221,6 +248,8 @@ const getApprovedEvents = async (req, res) => {
           joinedUsers,
           joinedCount: joinedUsers.length,
         };
+        if (event.ticketTheme) fallback.ticketTheme = event.ticketTheme;
+        return fallback;
       }
     });
 
@@ -269,7 +298,7 @@ const getMyEvents = async (req, res) => {
     const formattedEvents = events.map((event) => {
       const eventImage = formatEventImage(event.image);
       const joinedUsers = joinedByEventId[event._id.toString()] || [];
-      return {
+      const out = {
         id: event._id,
         title: event.title,
         description: event.description,
@@ -289,6 +318,8 @@ const getMyEvents = async (req, res) => {
         joinedUsers,
         joinedCount: joinedUsers.length,
       };
+      if (event.ticketTheme) out.ticketTheme = event.ticketTheme;
+      return out;
     });
 
     return res.status(200).json({
@@ -346,34 +377,47 @@ const getEventById = async (req, res) => {
       }
     }
 
+    // Compute remainingTickets for this event
+    let remainingTickets = null;
+    if (event.totalTickets && event.totalTickets > 0) {
+      const soldCount = await TicketModel.countDocuments({
+        eventId: event._id,
+        status: { $nin: ["cancelled", "expired"] },
+      });
+      remainingTickets = Math.max(0, event.totalTickets - soldCount);
+    }
+
     // Format event image URLs
     const eventImage = formatEventImage(event.image);
 
-    // Public endpoint - anyone can view any event by ID
+    const eventPayload = {
+      id: event._id,
+      title: event.title,
+      description: event.description,
+      date: event.date,
+      time: event.time,
+      location: event.location,
+      imageUrl: eventImage.imageUrl,
+      email: event.email,
+      phone: event.phone,
+      gender: event.gender,
+      ticketPrice: event.ticketPrice,
+      totalTickets: event.totalTickets,
+      remainingTickets,
+      status: event.status,
+      createdBy: formatCreatedByWithProfileImage(event.createdBy),
+      createdAt: event.createdAt,
+      updatedAt: event.updatedAt,
+      joinedUsers,
+      joinedCount: joinedUsers.length,
+      likeCount,
+      isLiked,
+    };
+    if (event.ticketTheme) eventPayload.ticketTheme = event.ticketTheme;
+
     return res.status(200).json({
       success: true,
-      event: {
-        id: event._id,
-        title: event.title,
-        description: event.description,
-        date: event.date,
-        time: event.time,
-        location: event.location,
-        imageUrl: eventImage.imageUrl,
-        email: event.email,
-        phone: event.phone,
-        gender: event.gender,
-        ticketPrice: event.ticketPrice,
-        totalTickets: event.totalTickets,
-        status: event.status,
-        createdBy: formatCreatedByWithProfileImage(event.createdBy),
-        createdAt: event.createdAt,
-        updatedAt: event.updatedAt,
-        joinedUsers,
-        joinedCount: joinedUsers.length,
-        likeCount,
-        isLiked,
-      },
+      event: eventPayload,
     });
   } catch (error) {
     return res.status(500).json({
@@ -470,6 +514,7 @@ const updateEvent = async (req, res) => {
       gender,
       ticketPrice,
       totalTickets,
+      ticketTheme,
     } = req.body;
 
     const event = await EventModel.findById(id);
@@ -507,6 +552,7 @@ const updateEvent = async (req, res) => {
     if (gender !== undefined) updateData.gender = gender;
     if (ticketPrice !== undefined) updateData.ticketPrice = ticketPrice;
     if (totalTickets !== undefined) updateData.totalTickets = totalTickets;
+    if (ticketTheme !== undefined) updateData.ticketTheme = ticketTheme;
 
     const updatedEvent = await EventModel.findByIdAndUpdate(
       id,
@@ -517,27 +563,30 @@ const updateEvent = async (req, res) => {
     // Format event image URLs
     const eventImage = formatEventImage(updatedEvent.image);
 
+    const eventPayload = {
+      id: updatedEvent._id,
+      title: updatedEvent.title,
+      description: updatedEvent.description,
+      date: updatedEvent.date,
+      time: updatedEvent.time,
+      location: updatedEvent.location,
+      imageUrl: eventImage.imageUrl,
+      email: updatedEvent.email,
+      phone: updatedEvent.phone,
+      gender: updatedEvent.gender,
+      ticketPrice: updatedEvent.ticketPrice,
+      totalTickets: updatedEvent.totalTickets,
+      status: updatedEvent.status,
+      createdBy: formatCreatedByWithProfileImage(updatedEvent.createdBy),
+      createdAt: updatedEvent.createdAt,
+      updatedAt: updatedEvent.updatedAt,
+    };
+    if (updatedEvent.ticketTheme) eventPayload.ticketTheme = updatedEvent.ticketTheme;
+
     return res.status(200).json({
       success: true,
       message: "Event updated successfully",
-      event: {
-        id: updatedEvent._id,
-        title: updatedEvent.title,
-        description: updatedEvent.description,
-        date: updatedEvent.date,
-        time: updatedEvent.time,
-        location: updatedEvent.location,
-        imageUrl: eventImage.imageUrl,
-        email: updatedEvent.email,
-        phone: updatedEvent.phone,
-        gender: updatedEvent.gender,
-        ticketPrice: updatedEvent.ticketPrice,
-        totalTickets: updatedEvent.totalTickets,
-        status: updatedEvent.status,
-        createdBy: formatCreatedByWithProfileImage(updatedEvent.createdBy),
-        createdAt: updatedEvent.createdAt,
-        updatedAt: updatedEvent.updatedAt,
-      },
+      event: eventPayload,
     });
   } catch (error) {
     return res.status(500).json({
@@ -601,7 +650,7 @@ const getPendingEvents = async (req, res) => {
 
     const formattedEvents = events.map((event) => {
       const eventImage = formatEventImage(event.image);
-      return {
+      const out = {
         id: event._id,
         title: event.title,
         description: event.description,
@@ -619,6 +668,8 @@ const getPendingEvents = async (req, res) => {
         createdAt: event.createdAt,
         updatedAt: event.updatedAt,
       };
+      if (event.ticketTheme) out.ticketTheme = event.ticketTheme;
+      return out;
     });
 
     return res.status(200).json({
