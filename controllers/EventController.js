@@ -1,5 +1,6 @@
 const EventModel = require("../models/EventModel");
 const UserModel = require("../models/UserModel");
+const TicketModel = require("../models/TicketModel");
 
 // Normalize image to relative path for DB storage (never store full URLs)
 const normalizeImageToRelativePath = (imageInput) => {
@@ -189,10 +190,25 @@ const getApprovedEvents = async (req, res) => {
       });
     }
 
-    // Format image URLs (both relative and full URL) and attach joinedUsers
+    // Pre-compute ticket counts per event to expose remainingTickets
+    const ticketCounts = await TicketModel.aggregate([
+      { $match: { eventId: { $in: eventIds }, status: { $nin: ["cancelled", "expired"] } } },
+      { $group: { _id: "$eventId", count: { $sum: 1 } } },
+    ]);
+    const ticketCountByEventId = {};
+    ticketCounts.forEach((t) => {
+      ticketCountByEventId[t._id.toString()] = t.count;
+    });
+
+    // Format image URLs (both relative and full URL), attach joinedUsers and remainingTickets
     const formattedEvents = events.map((event) => {
       const joinedUsers = joinedByEventId[event._id.toString()] || [];
       try {
+        const soldCount = ticketCountByEventId[event._id.toString()] || 0;
+        const remainingTickets =
+          event.totalTickets && event.totalTickets > 0
+            ? Math.max(0, event.totalTickets - soldCount)
+            : null;
         const eventImage = formatEventImage(event.image || "");
         const out = {
           _id: event._id,
@@ -205,6 +221,7 @@ const getApprovedEvents = async (req, res) => {
           gender: event.gender,
           ticketPrice: event.ticketPrice,
           totalTickets: event.totalTickets,
+          remainingTickets,
           createdAt: event.createdAt,
           createdBy: formatCreatedByWithProfileImage(event.createdBy),
           joinedUsers,
@@ -360,6 +377,16 @@ const getEventById = async (req, res) => {
       }
     }
 
+    // Compute remainingTickets for this event
+    let remainingTickets = null;
+    if (event.totalTickets && event.totalTickets > 0) {
+      const soldCount = await TicketModel.countDocuments({
+        eventId: event._id,
+        status: { $nin: ["cancelled", "expired"] },
+      });
+      remainingTickets = Math.max(0, event.totalTickets - soldCount);
+    }
+
     // Format event image URLs
     const eventImage = formatEventImage(event.image);
 
@@ -376,6 +403,7 @@ const getEventById = async (req, res) => {
       gender: event.gender,
       ticketPrice: event.ticketPrice,
       totalTickets: event.totalTickets,
+      remainingTickets,
       status: event.status,
       createdBy: formatCreatedByWithProfileImage(event.createdBy),
       createdAt: event.createdAt,
