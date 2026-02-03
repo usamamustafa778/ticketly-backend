@@ -20,6 +20,35 @@ const toImagePath = (val) => {
   return val.startsWith("/") ? val : `/${val}`;
 };
 
+// Backfill: if ticket is for a free event but still pending, confirm it and generate accessKey + QR
+const confirmFreeTicketIfNeeded = async (ticket) => {
+  if (!ticket || !ticket.eventId) return ticket;
+  const event = ticket.eventId;
+  const ticketPrice = event.ticketPrice != null ? Number(event.ticketPrice) : 0;
+  const isFreeEvent = ticketPrice <= 0 || isNaN(ticketPrice);
+  const isPending = ticket.status === "pending_payment" || ticket.status === "payment_in_review";
+  if (!isFreeEvent || !isPending) return ticket;
+
+  let accessKey = ticket.accessKey;
+  let qrCodeUrl = ticket.qrCodeUrl;
+  if (!accessKey) {
+    accessKey = generateAccessKey();
+    let existing = await TicketModel.findOne({ accessKey });
+    while (existing) {
+      accessKey = generateAccessKey();
+      existing = await TicketModel.findOne({ accessKey });
+    }
+  }
+  if (!qrCodeUrl && accessKey) {
+    qrCodeUrl = await generateQRCode(accessKey);
+  }
+  ticket.status = "confirmed";
+  if (accessKey) ticket.accessKey = accessKey;
+  if (qrCodeUrl) ticket.qrCodeUrl = qrCodeUrl;
+  await ticket.save();
+  return ticket;
+};
+
 // Build map eventId -> joinedUsers for ticket event objects
 const getJoinedUsersMap = async (eventIds) => {
   if (!eventIds || eventIds.length === 0) return {};
@@ -102,16 +131,17 @@ const createTicket = async (req, res) => {
       }
     }
 
-    // Free events (ticketPrice <= 0) are auto-confirmed with accessKey + QR;
-    // paid events start in pending_payment and are confirmed after payment verification.
+    // Free events: auto-submit (no payment step). Status confirmed + accessKey + QR so user gets QR and access key immediately.
+    // Paid events: start as pending_payment; confirmed after payment verification.
+    const ticketPriceNum = Number(event.ticketPrice);
+    const isFreeEvent = !event.ticketPrice || ticketPriceNum <= 0 || isNaN(ticketPriceNum);
+
     let status = "pending_payment";
     let accessKey = null;
     let qrCodeUrl = "";
 
-    const isFreeEvent = !event.ticketPrice || event.ticketPrice <= 0;
     if (isFreeEvent) {
       status = "confirmed";
-      // Generate unique access key (re-use uniqueness logic from payment controller)
       accessKey = generateAccessKey();
       let existingTicket = await TicketModel.findOne({ accessKey });
       while (existingTicket) {
@@ -179,10 +209,15 @@ const getMyTickets = async (req, res) => {
   try {
     const userId = req.userId;
 
-    const tickets = await TicketModel.find({ userId })
+    let tickets = await TicketModel.find({ userId })
       .populate("eventId", "title description date time location image ticketPrice")
       .populate("organizerId", "fullName username email phone")
       .sort({ createdAt: -1 });
+
+    // Backfill: confirm free-event tickets that were created as pending
+    for (let i = 0; i < tickets.length; i++) {
+      tickets[i] = await confirmFreeTicketIfNeeded(tickets[i]);
+    }
 
     // Get joinedUsers for all events in this ticket list
     const eventIds = [...new Set(tickets.map((t) => t.eventId).filter(Boolean))];
@@ -251,7 +286,7 @@ const getTicketById = async (req, res) => {
     const userId = req.userId;
     const user = req.user;
 
-    const ticket = await TicketModel.findById(ticketId)
+    let ticket = await TicketModel.findById(ticketId)
       .populate({
         path: "eventId",
         populate: {
@@ -268,6 +303,9 @@ const getTicketById = async (req, res) => {
         message: "Ticket not found",
       });
     }
+
+    // Backfill: free-event tickets that were created as pending get confirmed + accessKey + QR now
+    ticket = await confirmFreeTicketIfNeeded(ticket);
 
     const paymentScreenshotUrl = toImagePath(ticket.paymentScreenshotUrl);
     const qrCodeUrl = ticket.status === "confirmed" ? toImagePath(ticket.qrCodeUrl) : null;
