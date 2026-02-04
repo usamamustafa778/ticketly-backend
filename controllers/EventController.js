@@ -162,7 +162,7 @@ const getApprovedEvents = async (req, res) => {
     // Return ONLY approved events with limited fields for explore page
     const events = await EventModel.find({ status: "approved" })
       .select(
-        "title description date time location image ticketPrice totalTickets createdAt createdBy"
+        "title description date time location image category gender ticketTheme ticketPrice totalTickets createdAt createdBy"
       )
       .sort({ createdAt: -1 })
       .populate("createdBy", "fullName username email profileImage")
@@ -220,6 +220,7 @@ const getApprovedEvents = async (req, res) => {
           location: event.location,
           imageUrl: eventImage.imageUrl,
           gender: event.gender,
+          category: event.category || "other",
           ticketPrice: event.ticketPrice,
           totalTickets: event.totalTickets,
           remainingTickets,
@@ -243,6 +244,7 @@ const getApprovedEvents = async (req, res) => {
           image: null,
           imageUrl: null,
           gender: event.gender,
+          category: event.category || "other",
           ticketPrice: event.ticketPrice,
           totalTickets: event.totalTickets,
           ticketTheme: event.ticketTheme || null,
@@ -312,6 +314,7 @@ const getMyEvents = async (req, res) => {
         email: event.email,
         phone: event.phone,
         gender: event.gender,
+        category: event.category || "other",
         ticketPrice: event.ticketPrice,
         totalTickets: event.totalTickets,
         status: event.status,
@@ -405,6 +408,7 @@ const getEventById = async (req, res) => {
       email: event.email,
       phone: event.phone,
       gender: event.gender,
+      category: event.category || "other",
       ticketPrice: event.ticketPrice,
       totalTickets: event.totalTickets,
       remainingTickets,
@@ -668,6 +672,7 @@ const getPendingEvents = async (req, res) => {
         email: event.email,
         phone: event.phone,
         gender: event.gender,
+        category: event.category || "other",
         ticketPrice: event.ticketPrice,
         totalTickets: event.totalTickets,
         status: event.status,
