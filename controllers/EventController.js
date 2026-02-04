@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const EventModel = require("../models/EventModel");
 const UserModel = require("../models/UserModel");
 const TicketModel = require("../models/TicketModel");
@@ -159,6 +160,14 @@ const formatCreatedByWithProfileImage = (cb) => {
 // ==================== GET ALL APPROVED EVENTS (PUBLIC) ====================
 const getApprovedEvents = async (req, res) => {
   try {
+    // Fail fast with a clear message when DB is not connected (common local issue)
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        success: false,
+        message:
+          "Database not connected. Check MONGO_URI in .env and that MongoDB is running.",
+      });
+    }
     // Return ONLY approved events with limited fields for explore page
     const events = await EventModel.find({ status: "approved" })
       .select(
@@ -265,10 +274,11 @@ const getApprovedEvents = async (req, res) => {
     });
   } catch (error) {
     console.error("Error in getApprovedEvents:", error);
+    const isDev = process.env.NODE_ENV === "development";
     return res.status(500).json({
       success: false,
-      message: "Error fetching events",
-      error: process.env.NODE_ENV === "development" ? error.message : "Internal server error",
+      message: isDev ? error.message : "Error fetching events",
+      error: isDev ? error.message : "Internal server error",
     });
   }
 };

@@ -12,6 +12,7 @@ const EventRouter = require("./routers/EventRouter");
 const AdminRouter = require("./routers/AdminRouter");
 const TicketRouter = require("./routers/TicketRouter");
 const PaymentRouter = require("./routers/PaymentRouter");
+const NotificationRouter = require("./routers/NotificationRouter");
 const app = express();
 
 // ✅ Enable CORS for frontend and dashboard - must be before other middleware
@@ -141,6 +142,7 @@ app.use("/api/events", EventRouter);
 app.use("/api/admin", AdminRouter);
 app.use("/api/tickets", TicketRouter);
 app.use("/api/payments", PaymentRouter);
+app.use("/api/notifications", NotificationRouter);
 app.get("/", (req, res) => {
   res.send("Backend is working ✅");
 });
