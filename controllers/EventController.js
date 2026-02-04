@@ -49,6 +49,7 @@ const createEvent = async (req, res) => {
       email,
       phone,
       gender,
+      category,
       ticketPrice,
       totalTickets,
       ticketTheme,
@@ -67,6 +68,7 @@ const createEvent = async (req, res) => {
       email,
       phone: phone || "",
       gender: gender || "all",
+      category: (category && String(category).trim()) ? String(category).trim().toLowerCase() : "other",
       ticketPrice,
       totalTickets: totalTickets ?? 0,
       status: "pending",
@@ -104,6 +106,7 @@ const createEvent = async (req, res) => {
       email: event.email,
       phone: event.phone,
       gender: event.gender,
+      category: event.category || "other",
       ticketPrice: event.ticketPrice,
       totalTickets: event.totalTickets,
       status: event.status,
@@ -513,6 +516,7 @@ const updateEvent = async (req, res) => {
       email,
       phone,
       gender,
+      category,
       ticketPrice,
       totalTickets,
       ticketTheme,
@@ -551,6 +555,7 @@ const updateEvent = async (req, res) => {
     if (email) updateData.email = email;
     if (phone) updateData.phone = phone;
     if (gender !== undefined) updateData.gender = gender;
+    if (category !== undefined) updateData.category = (category && String(category).trim()) ? String(category).trim().toLowerCase() : "other";
     if (ticketPrice !== undefined) updateData.ticketPrice = ticketPrice;
     if (totalTickets !== undefined) updateData.totalTickets = totalTickets;
     if (ticketTheme !== undefined) updateData.ticketTheme = ticketTheme;
@@ -575,6 +580,7 @@ const updateEvent = async (req, res) => {
       email: updatedEvent.email,
       phone: updatedEvent.phone,
       gender: updatedEvent.gender,
+      category: updatedEvent.category || "other",
       ticketPrice: updatedEvent.ticketPrice,
       totalTickets: updatedEvent.totalTickets,
       status: updatedEvent.status,
