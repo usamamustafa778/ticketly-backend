@@ -601,6 +601,8 @@ const getUserProfile = async (req, res) => {
         joinedEvents: joinedEventsData,
         likedEvents: formattedLikedEvents,
         likedEventsVisibility: user.likedEventsVisibility || "public",
+        followersVisibility: user.followersVisibility || "public",
+        followingVisibility: user.followingVisibility || "public",
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
       },
@@ -763,6 +765,49 @@ const getUserProfileById = async (req, res) => {
 
     const profileImageUrl = toImagePath(user.profileImage);
 
+    // Followers / Following (respect visibility)
+    const followerIds = user.followers || [];
+    const followingIds = user.following || [];
+    const followerCount = followerIds.length;
+    const followingCount = followingIds.length;
+    const showFollowers = (user.followersVisibility || "public") === "public";
+    const showFollowing = (user.followingVisibility || "public") === "public";
+
+    let followersList = [];
+    if (showFollowers && followerIds.length > 0) {
+      const followersUsers = await UserModel.find({ _id: { $in: followerIds } })
+        .select("fullName username profileImage")
+        .lean();
+      followersList = followersUsers.map((u) => ({
+        _id: u._id,
+        fullName: u.fullName || u.username || "User",
+        username: u.username,
+        profileImageUrl: toImagePath(u.profileImage) || null,
+      }));
+    }
+
+    let followingList = [];
+    if (showFollowing && followingIds.length > 0) {
+      const followingUsers = await UserModel.find({ _id: { $in: followingIds } })
+        .select("fullName username profileImage")
+        .lean();
+      followingList = followingUsers.map((u) => ({
+        _id: u._id,
+        fullName: u.fullName || u.username || "User",
+        username: u.username,
+        profileImageUrl: toImagePath(u.profileImage) || null,
+      }));
+    }
+
+    // isFollowing: when viewer is logged in
+    let isFollowing = false;
+    if (req.userId) {
+      const viewer = await UserModel.findById(req.userId).select("following").lean();
+      if (viewer && viewer.following && viewer.following.some((id) => id.toString() === user._id.toString())) {
+        isFollowing = true;
+      }
+    }
+
     return res.status(200).json({
       success: true,
       user: {
@@ -773,10 +818,96 @@ const getUserProfileById = async (req, res) => {
         profileImageUrl: profileImageUrl,
         companyName: user.companyName || null,
         likedEventsVisibility: user.likedEventsVisibility || "public",
+        followersVisibility: user.followersVisibility || "public",
+        followingVisibility: user.followingVisibility || "public",
+        followerCount,
+        followingCount,
+        followers: followersList,
+        following: followingList,
+        isFollowing,
         createdEvents: formattedCreatedEvents,
         joinedEvents: joinedEventsData,
         likedEvents: formattedLikedEvents,
       },
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ==================== FOLLOW USER ====================
+const followUser = async (req, res) => {
+  try {
+    const currentUserId = req.userId;
+    const { userId: targetUserId } = req.params;
+
+    if (currentUserId === targetUserId) {
+      return res.status(400).json({ success: false, message: "You cannot follow yourself" });
+    }
+
+    const targetUser = await UserModel.findById(targetUserId);
+    if (!targetUser) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    const currentUser = await UserModel.findById(currentUserId);
+    if (!currentUser) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    const targetIdStr = targetUserId.toString();
+    const currentFollowing = (currentUser.following || []).map((id) => id.toString());
+    if (currentFollowing.includes(targetIdStr)) {
+      return res.status(200).json({ success: true, message: "Already following", following: true });
+    }
+
+    currentUser.following = currentUser.following || [];
+    currentUser.following.push(targetUser._id);
+    await currentUser.save();
+
+    targetUser.followers = targetUser.followers || [];
+    targetUser.followers.push(currentUser._id);
+    await targetUser.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Following",
+      following: true,
+      followerCount: targetUser.followers.length,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ==================== UNFOLLOW USER ====================
+const unfollowUser = async (req, res) => {
+  try {
+    const currentUserId = req.userId;
+    const { userId: targetUserId } = req.params;
+
+    const targetUser = await UserModel.findById(targetUserId);
+    if (!targetUser) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    const currentUser = await UserModel.findById(currentUserId);
+    if (!currentUser) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    const targetIdStr = targetUser._id.toString();
+    currentUser.following = (currentUser.following || []).filter((id) => id.toString() !== targetIdStr);
+    await currentUser.save();
+
+    targetUser.followers = (targetUser.followers || []).filter((id) => id.toString() !== currentUserId.toString());
+    await targetUser.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Unfollowed",
+      following: false,
+      followerCount: targetUser.followers.length,
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
@@ -819,13 +950,23 @@ const getAllUsers = async (req, res) => {
 // ==================== UPDATE USER (Self Update) ====================
 const updateUser = async (req, res) => {
   try {
-    const { name, email, password, likedEventsVisibility } = req.body;
+    const { name, email, password, likedEventsVisibility, followersVisibility, followingVisibility } = req.body;
     const updateData = {};
 
     // Only update fields that are provided
     if (likedEventsVisibility !== undefined) {
       if (["public", "private"].includes(likedEventsVisibility)) {
         updateData.likedEventsVisibility = likedEventsVisibility;
+      }
+    }
+    if (followersVisibility !== undefined) {
+      if (["public", "private"].includes(followersVisibility)) {
+        updateData.followersVisibility = followersVisibility;
+      }
+    }
+    if (followingVisibility !== undefined) {
+      if (["public", "private"].includes(followingVisibility)) {
+        updateData.followingVisibility = followingVisibility;
       }
     }
 
@@ -887,6 +1028,8 @@ const updateUser = async (req, res) => {
         joinedEvents: updatedUser.joinedEvents || [],
         likedEvents: updatedUser.likedEvents || [],
         likedEventsVisibility: updatedUser.likedEventsVisibility || "public",
+        followersVisibility: updatedUser.followersVisibility || "public",
+        followingVisibility: updatedUser.followingVisibility || "public",
         createdAt: updatedUser.createdAt,
         updatedAt: updatedUser.updatedAt,
       },
@@ -1188,4 +1331,6 @@ module.exports = {
   deleteUser,
   deleteUserByAdmin,
   uploadProfileImage,
+  followUser,
+  unfollowUser,
 };

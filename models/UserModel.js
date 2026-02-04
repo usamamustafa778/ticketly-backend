@@ -69,6 +69,26 @@ const UserSchema = new mongoose.Schema({
     enum: ["public", "private"],
     default: "public",
   },
+  following: {
+    type: [mongoose.Schema.Types.ObjectId],
+    ref: "User",
+    default: [],
+  },
+  followers: {
+    type: [mongoose.Schema.Types.ObjectId],
+    ref: "User",
+    default: [],
+  },
+  followersVisibility: {
+    type: String,
+    enum: ["public", "private"],
+    default: "public",
+  },
+  followingVisibility: {
+    type: String,
+    enum: ["public", "private"],
+    default: "public",
+  },
   createdAt: {
     type: Date,
     default: Date.now,
