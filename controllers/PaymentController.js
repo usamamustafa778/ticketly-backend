@@ -3,6 +3,7 @@ const TicketModel = require("../models/TicketModel");
 const EventModel = require("../models/EventModel");
 const UserModel = require("../models/UserModel");
 const { generateQRCode, generateAccessKey } = require("../utils/qrCodeService");
+const { createNotification } = require("../utils/notificationService");
 const path = require("path");
 const fs = require("fs");
 
@@ -251,6 +252,22 @@ const verifyPayment = async (req, res) => {
       ticket.qrCodeUrl = qrCodeUrl;
       ticket.status = "confirmed";
       await ticket.save();
+
+      // Notify organizer: "Someone bought a ticket for Concert X."
+      const eventRef = payment.eventId;
+      const eventId = eventRef && (eventRef._id || eventRef);
+      const eventTitle = eventRef && eventRef.title ? eventRef.title : "your event";
+      const organizerId = eventRef && (eventRef.createdBy && (eventRef.createdBy._id || eventRef.createdBy));
+      if (organizerId && eventId) {
+        createNotification({
+          recipient: organizerId,
+          type: "ticket_purchased",
+          title: `Someone bought a ticket for ${eventTitle}.`,
+          body: "",
+          eventId,
+          actorUserId: payment.userId,
+        }).catch(() => {});
+      }
 
       return res.status(200).json({
         success: true,

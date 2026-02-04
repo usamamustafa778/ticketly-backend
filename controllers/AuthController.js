@@ -7,6 +7,7 @@ const RefreshTokenModel = require("../models/RefreshTokenModel");
 const TicketModel = require("../models/TicketModel");
 const EventModel = require("../models/EventModel");
 const { sendOtpEmail, isEmailConfigured } = require("../utils/emailService");
+const { createNotification } = require("../utils/notificationService");
 
 // Return only relative path (no base URL) - client constructs full URL from API_BASE_URL
 const toImagePath = (val) => {
@@ -915,6 +916,16 @@ const followUser = async (req, res) => {
     targetUser.followers = targetUser.followers || [];
     targetUser.followers.push(currentUser._id);
     await targetUser.save();
+
+    // Notify the followed user: "John started following you."
+    const actorName = currentUser.fullName || currentUser.name || currentUser.username || "Someone";
+    createNotification({
+      recipient: targetUser._id,
+      type: "new_follower",
+      title: `${actorName} started following you.`,
+      body: "",
+      actorUserId: currentUser._id,
+    }).catch(() => {});
 
     return res.status(200).json({
       success: true,

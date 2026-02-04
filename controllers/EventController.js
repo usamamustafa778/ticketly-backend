@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const EventModel = require("../models/EventModel");
 const UserModel = require("../models/UserModel");
 const TicketModel = require("../models/TicketModel");
+const { createNotification, createNotificationForMany } = require("../utils/notificationService");
 
 // Normalize image to relative path for DB storage (never store full URLs)
 const normalizeImageToRelativePath = (imageInput) => {
@@ -472,6 +473,18 @@ const likeEvent = async (req, res) => {
     user.likedEvents.push(event._id);
     await user.save();
 
+    // Notify organizer: "Jane liked your event Concert X."
+    const actorName = user.fullName || user.name || user.username || "Someone";
+    const eventTitle = event.title || "your event";
+    createNotification({
+      recipient: event.createdBy,
+      type: "event_liked",
+      title: `${actorName} liked your event ${eventTitle}.`,
+      body: "",
+      eventId: event._id,
+      actorUserId: userId,
+    }).catch(() => {});
+
     const likeCount = await UserModel.countDocuments({ likedEvents: event._id });
     return res.status(200).json({
       success: true,
@@ -580,6 +593,20 @@ const updateEvent = async (req, res) => {
       { new: true, runValidators: true }
     ).populate("createdBy", "fullName username email profileImage");
 
+    // Notify all users who joined: "Concert X was updated: new date."
+    const joinedUsers = await UserModel.find({ joinedEvents: id }).select("_id").lean();
+    const recipientIds = joinedUsers.map((u) => u._id).filter((uid) => uid && uid.toString() !== req.userId);
+    if (recipientIds.length > 0) {
+      const eventTitle = updatedEvent.title || "Event";
+      createNotificationForMany(recipientIds, {
+        type: "event_update",
+        title: `${eventTitle} was updated.`,
+        body: "Check the event for new date, time, or venue.",
+        eventId: updatedEvent._id,
+        actorUserId: req.userId,
+      }).catch(() => {});
+    }
+
     // Format event image URLs
     const eventImage = formatEventImage(updatedEvent.image);
 
@@ -643,6 +670,20 @@ const deleteEvent = async (req, res) => {
         message:
           "Access denied. Only event owner or admin can delete this event.",
       });
+    }
+
+    // Notify all users who joined: event cancelled
+    const joinedUsers = await UserModel.find({ joinedEvents: id }).select("_id").lean();
+    const recipientIds = joinedUsers.map((u) => u._id).filter(Boolean);
+    const eventTitle = event.title || "Event";
+    if (recipientIds.length > 0) {
+      createNotificationForMany(recipientIds, {
+        type: "event_cancelled",
+        title: `${eventTitle} has been cancelled.`,
+        body: "The organizer has cancelled this event.",
+        eventId: event._id,
+        actorUserId: req.userId,
+      }).catch(() => {});
     }
 
     // Hard delete
@@ -740,6 +781,17 @@ const approveEvent = async (req, res) => {
       creator.role = "organizer";
       await creator.save();
     }
+
+    // Notify organizer: "Your event Concert X is now live."
+    const organizerId = event.createdBy._id || event.createdBy;
+    const eventTitle = event.title || "Your event";
+    createNotification({
+      recipient: organizerId,
+      type: "event_approved",
+      title: `Your event ${eventTitle} is now live.`,
+      body: "",
+      eventId: event._id,
+    }).catch(() => {});
 
     return res.status(200).json({
       success: true,

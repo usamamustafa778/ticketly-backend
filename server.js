@@ -20,9 +20,15 @@ const app = express();
 const getAllowedOrigins = () => {
   const origins = [];
 
+  // Local dev: Expo web (8081), common dev ports
+  origins.push("http://localhost:8081");
+  origins.push("http://localhost:3000");
+  origins.push("http://127.0.0.1:8081");
+  origins.push("http://127.0.0.1:3000");
+
   // Add Vercel dashboard URL
   origins.push("https://ticketly-dashboard.vercel.app");
-  
+
   // Add Vercel website URL
   origins.push("https://ticketly-website.vercel.app");
 
@@ -48,38 +54,42 @@ app.use(
         return callback(null, true);
       }
 
+      // Normalize: remove trailing slash so "http://localhost:8081/" matches
+      const normalizedOrigin = origin.replace(/\/$/, "");
+
       // Always allow localhost and 127.0.0.1 for development (any port)
-      // This includes Next.js dev server (3000, 8081, etc.) and React Native web
+      // Includes Expo web (8081), Next.js (3000), React Native web, etc.
       const localhostPattern = /^http:\/\/localhost(:\d+)?$/;
       const localhostIPPattern = /^http:\/\/127\.0\.0\.1(:\d+)?$/;
-      
-      if (localhostPattern.test(origin) || localhostIPPattern.test(origin)) {
+
+      if (localhostPattern.test(normalizedOrigin) || localhostIPPattern.test(normalizedOrigin)) {
         console.log(`✅ CORS: Allowing localhost origin: ${origin}`);
         return callback(null, true);
       }
 
       // Also allow http://localhost without port (defaults to port 80)
-      if (origin === "http://localhost" || origin === "http://127.0.0.1") {
+      if (normalizedOrigin === "http://localhost" || normalizedOrigin === "http://127.0.0.1") {
         console.log(`✅ CORS: Allowing localhost origin (no port): ${origin}`);
         return callback(null, true);
       }
       
       // Allow Vercel preview deployments (any subdomain)
-      if (origin.includes("vercel.app")) {
+      if (normalizedOrigin.includes("vercel.app")) {
         console.log(`✅ CORS: Allowing Vercel origin: ${origin}`);
         return callback(null, true);
       }
 
       // Check against allowed origins (includes Vercel dashboard and FRONTEND_URL)
       if (allowedOrigins.length > 0) {
-        // Check exact match
-        if (allowedOrigins.includes(origin)) {
+        // Check exact match (compare normalized)
+        const allowedNormalized = allowedOrigins.map((o) => o.replace(/\/$/, ""));
+        if (allowedNormalized.includes(normalizedOrigin)) {
           console.log(`✅ CORS: Allowing exact match: ${origin}`);
           return callback(null, true);
         }
         // Also check if origin starts with any allowed origin (for subdomains/paths)
         const isAllowed = allowedOrigins.some((allowedOrigin) =>
-          origin.startsWith(allowedOrigin)
+          normalizedOrigin.startsWith(allowedOrigin.replace(/\/$/, ""))
         );
         if (isAllowed) {
           console.log(`✅ CORS: Allowing origin (starts with allowed): ${origin}`);

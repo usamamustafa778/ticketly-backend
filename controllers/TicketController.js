@@ -3,6 +3,7 @@ const EventModel = require("../models/EventModel");
 const PaymentModel = require("../models/PaymentModel");
 const UserModel = require("../models/UserModel");
 const { generateAccessKey, generateQRCode } = require("../utils/qrCodeService");
+const { createNotification } = require("../utils/notificationService");
 const path = require("path");
 const fs = require("fs");
 
@@ -169,13 +170,26 @@ const createTicket = async (req, res) => {
     const user = await UserModel.findById(userId);
     if (user) {
       // Convert to strings for comparison
-      const joinedEventIds = user.joinedEvents.map((id) => id.toString());
+      const joinedEventIds = (user.joinedEvents || []).map((id) => id.toString());
       const eventIdStr = eventId.toString();
-      
+
       if (!joinedEventIds.includes(eventIdStr)) {
+        user.joinedEvents = user.joinedEvents || [];
         user.joinedEvents.push(eventId);
         await user.save();
       }
+
+      // Notify organizer: "Mike joined Concert X."
+      const joinerName = user.fullName || user.name || user.username || "Someone";
+      const eventTitle = event.title || "your event";
+      createNotification({
+        recipient: event.createdBy,
+        type: "event_joined",
+        title: `${joinerName} joined ${eventTitle}.`,
+        body: "",
+        eventId: event._id,
+        actorUserId: userId,
+      }).catch(() => {});
     }
 
     return res.status(201).json({
