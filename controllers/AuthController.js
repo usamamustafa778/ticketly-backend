@@ -585,6 +585,41 @@ const getUserProfile = async (req, res) => {
     });
 
     const profileImageUrl = toImagePath(user.profileImage);
+    const coverImageUrl = toImagePath(user.coverImage);
+
+    // Followers / Following for own profile (respect visibility)
+    const followerIds = user.followers || [];
+    const followingIds = user.following || [];
+    const followerCount = followerIds.length;
+    const followingCount = followingIds.length;
+    const showFollowers = (user.followersVisibility || "public") === "public";
+    const showFollowing = (user.followingVisibility || "public") === "public";
+
+    let followersList = [];
+    if (showFollowers && followerIds.length > 0) {
+      const followersUsers = await UserModel.find({ _id: { $in: followerIds } })
+        .select("fullName username profileImage")
+        .lean();
+      followersList = followersUsers.map((u) => ({
+        _id: u._id,
+        fullName: u.fullName || u.username || "User",
+        username: u.username,
+        profileImageUrl: toImagePath(u.profileImage) || null,
+      }));
+    }
+
+    let followingList = [];
+    if (showFollowing && followingIds.length > 0) {
+      const followingUsers = await UserModel.find({ _id: { $in: followingIds } })
+        .select("fullName username profileImage")
+        .lean();
+      followingList = followingUsers.map((u) => ({
+        _id: u._id,
+        fullName: u.fullName || u.username || "User",
+        username: u.username,
+        profileImageUrl: toImagePath(u.profileImage) || null,
+      }));
+    }
 
     return res.status(200).json({
       success: true,
@@ -597,12 +632,17 @@ const getUserProfile = async (req, res) => {
         role: user.role,
         isVerified: user.isVerified,
         profileImageUrl: profileImageUrl,
+        coverImageUrl: coverImageUrl,
         createdEvents: formattedCreatedEvents,
         joinedEvents: joinedEventsData,
         likedEvents: formattedLikedEvents,
         likedEventsVisibility: user.likedEventsVisibility || "public",
         followersVisibility: user.followersVisibility || "public",
         followingVisibility: user.followingVisibility || "public",
+        followerCount: followerCount ?? 0,
+        followingCount: followingCount ?? 0,
+        followers: followersList ?? [],
+        following: followingList ?? [],
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
       },
@@ -764,6 +804,7 @@ const getUserProfileById = async (req, res) => {
     const formattedLikedEvents = likedEvents.map(formatEvent);
 
     const profileImageUrl = toImagePath(user.profileImage);
+    const coverImageUrl = toImagePath(user.coverImage);
 
     // Followers / Following (respect visibility)
     const followerIds = user.followers || [];
@@ -817,14 +858,15 @@ const getUserProfileById = async (req, res) => {
         username: user.username,
         profileImageUrl: profileImageUrl,
         companyName: user.companyName || null,
+        coverImageUrl: coverImageUrl,
         likedEventsVisibility: user.likedEventsVisibility || "public",
         followersVisibility: user.followersVisibility || "public",
         followingVisibility: user.followingVisibility || "public",
-        followerCount,
-        followingCount,
-        followers: followersList,
-        following: followingList,
-        isFollowing,
+        followerCount: followerCount ?? 0,
+        followingCount: followingCount ?? 0,
+        followers: followersList ?? [],
+        following: followingList ?? [],
+        isFollowing: !!isFollowing,
         createdEvents: formattedCreatedEvents,
         joinedEvents: joinedEventsData,
         likedEvents: formattedLikedEvents,
@@ -1317,6 +1359,80 @@ const uploadProfileImage = async (req, res) => {
   }
 };
 
+// ==================== UPLOAD COVER IMAGE ====================
+const uploadCoverImage = async (req, res) => {
+  try {
+    const userId = req.userId;
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "Cover image is required. Please select an image file.",
+      });
+    }
+
+    const user = await UserModel.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Delete old cover image if exists
+    if (user.coverImage) {
+      const fs = require("fs");
+      const path = require("path");
+      const oldImagePath = path.join(
+        __dirname,
+        "..",
+        "uploads",
+        "profiles",
+        path.basename(user.coverImage)
+      );
+      if (fs.existsSync(oldImagePath)) {
+        try {
+          fs.unlinkSync(oldImagePath);
+        } catch (error) {
+          console.error("Error deleting old cover image:", error);
+        }
+      }
+    }
+
+    // Store cover image alongside profiles for now
+    const coverImagePath = `/uploads/profiles/${req.file.filename}`;
+    user.coverImage = coverImagePath;
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Cover image uploaded successfully",
+      coverImageUrl: coverImagePath,
+      user: {
+        _id: user._id,
+        id: user._id,
+        fullName: user.fullName || user.name,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        profileImageUrl: toImagePath(user.profileImage),
+        coverImageUrl: coverImagePath,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error uploading cover image:", {
+      message: error.message,
+      stack: error.stack,
+      userId: req.userId,
+    });
+    return res.status(500).json({
+      success: false,
+      message: "Error uploading cover image. Please try again.",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
 module.exports = {
   signup,
   login,
@@ -1331,6 +1447,7 @@ module.exports = {
   deleteUser,
   deleteUserByAdmin,
   uploadProfileImage,
+  uploadCoverImage,
   followUser,
   unfollowUser,
 };

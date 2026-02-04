@@ -14,6 +14,7 @@ const {
   deleteUser,
   deleteUserByAdmin,
   uploadProfileImage,
+  uploadCoverImage,
 } = require("../controllers/AuthController");
 const {
   signupValidation,
@@ -81,6 +82,13 @@ router.post(
   handleMulterError,
   uploadProfileImage
 ); // Upload profile image (All authenticated users)
+router.post(
+  "/upload-cover-image",
+  verifyToken,
+  uploadProfile.single("image"),
+  handleMulterError,
+  uploadCoverImage
+); // Upload cover image (All authenticated users)
 router.get("/users", verifyToken, requireAdmin, getAllUsers); // Get all users (Admin only)
 router.put("/update", verifyToken, updateUserValidation, updateUser); // Update own profile (User)
 router.put("/update/:userId", verifyToken, requireAdmin, updateUserByAdminValidation, updateUserByAdmin); // Update any user (Admin only)

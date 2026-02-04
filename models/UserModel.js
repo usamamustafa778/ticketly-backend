@@ -49,6 +49,11 @@ const UserSchema = new mongoose.Schema({
     trim: true,
     default: "",
   },
+  coverImage: {
+    type: String,
+    trim: true,
+    default: "",
+  },
   createdEvents: {
     type: [mongoose.Schema.Types.ObjectId],
     ref: "Event",
