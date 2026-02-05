@@ -72,7 +72,10 @@ const handleMulterError = (err, req, res, next) => {
 };
 
 // ==================== PUBLIC ROUTES ====================
-router.get("/", getApprovedEvents); // Get all approved events (Public)
+// Get all approved events (Public). When Authorization header is present,
+// optionalVerifyToken will attach req.userId so the controller can return
+// personalized data (e.g. following feed + suggestions) without requiring auth.
+router.get("/", optionalVerifyToken, getApprovedEvents);
 
 // ==================== AUTHENTICATED ROUTES ====================
 // IMPORTANT: Specific routes must come before parameterized routes to avoid route conflicts

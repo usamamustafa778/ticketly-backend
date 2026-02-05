@@ -158,7 +158,7 @@ const formatCreatedByWithProfileImage = (cb) => {
   };
 };
 
-// ==================== GET ALL APPROVED EVENTS (PUBLIC) ====================
+// ==================== GET ALL APPROVED EVENTS (PUBLIC + OPTIONAL PERSONALIZATION) ====================
 const getApprovedEvents = async (req, res) => {
   try {
     // Fail fast with a clear message when DB is not connected (common local issue)
@@ -169,7 +169,9 @@ const getApprovedEvents = async (req, res) => {
           "Database not connected. Check MONGO_URI in .env and that MongoDB is running.",
       });
     }
-    // Return ONLY approved events with limited fields for explore page
+    const userId = req.userId || null;
+
+    // Return ONLY approved events with limited fields for explore page / home feed
     const events = await EventModel.find({ status: "approved" })
       .select(
         "title description date time location image category gender ticketTheme ticketPrice totalTickets createdAt createdBy"
@@ -268,10 +270,151 @@ const getApprovedEvents = async (req, res) => {
       }
     });
 
+    // ==================== OPTIONAL: PERSONALIZED FOLLOWING FEED + SUGGESTED ACCOUNTS ====================
+    let suggestedData = null;
+
+    if (userId) {
+      try {
+        const user = await UserModel.findById(userId)
+          .select("following likedEvents joinedEvents")
+          .lean();
+
+        if (user) {
+          const followingIds = (user.following || []).map((id) => id.toString());
+          const likedEventIds = (user.likedEvents || []).map((id) => id.toString());
+          const joinedEventIds = (user.joinedEvents || []).map((id) => id.toString());
+
+          // Events created by people the user follows (for Following tab)
+          const followingEvents = formattedEvents.filter((event) => {
+            const creatorId = event.createdBy?._id || event.createdBy?.id;
+            if (!creatorId) return false;
+            return followingIds.includes(creatorId.toString());
+          });
+
+          // Build interest categories from liked + joined events
+          const interestEventIdSet = new Set(
+            [...likedEventIds, ...joinedEventIds].map((id) => id.toString())
+          );
+          const interestCategoriesSet = new Set();
+          events.forEach((e) => {
+            if (interestEventIdSet.has(e._id.toString()) && e.category) {
+              interestCategoriesSet.add(String(e.category).toLowerCase());
+            }
+          });
+
+          // Collect candidate organizers (creators of approved events)
+          const creatorIdSet = new Set();
+          const eventsByCreatorId = {};
+          events.forEach((e) => {
+            const cb = e.createdBy;
+            const cid = cb && (cb._id || cb.id);
+            if (!cid) return;
+            const cidStr = cid.toString();
+            creatorIdSet.add(cidStr);
+            if (!eventsByCreatorId[cidStr]) eventsByCreatorId[cidStr] = [];
+            eventsByCreatorId[cidStr].push(e);
+          });
+
+          const creatorIds = Array.from(creatorIdSet).filter(
+            (cid) => cid !== userId.toString() && !followingIds.includes(cid)
+          );
+
+          let suggestedAccounts = [];
+
+          if (creatorIds.length > 0) {
+            const creators = await UserModel.find({ _id: { $in: creatorIds } })
+              .select("fullName username profileImage followers role")
+              .lean();
+
+            const followingIdSet = new Set(followingIds);
+
+            const scoreAndAccounts = creators.map((creator) => {
+              const cid = creator._id.toString();
+              const creatorEvents = eventsByCreatorId[cid] || [];
+              const creatorCategories = new Set(
+                creatorEvents
+                  .map((e) => (e.category ? String(e.category).toLowerCase() : null))
+                  .filter(Boolean)
+              );
+
+              // Compute simple scores / reason types
+              const followers = creator.followers || [];
+              const followerIds = followers.map((id) => id.toString());
+              const followerCount = followerIds.length;
+
+              const hasInterestOverlap = Array.from(creatorCategories).some((cat) =>
+                interestCategoriesSet.has(cat)
+              );
+              const socialProofCount = followerIds.filter((fid) =>
+                followingIdSet.has(fid)
+              ).length;
+
+              let reasonType = "curated";
+              let reasonLabel = "Ticketly pick";
+              let score = 0;
+
+              if (hasInterestOverlap && interestCategoriesSet.size > 0) {
+                reasonType = "interest";
+                reasonLabel = "Matches your interests";
+                score += 30;
+              }
+
+              if (socialProofCount > 0) {
+                reasonType = "social_proof";
+                reasonLabel = "Followed by people you follow";
+                score += 40 + Math.min(socialProofCount, 5);
+              }
+
+              if (followerCount > 0) {
+                // Treat higher follower count as "trending"
+                if (score === 0) {
+                  reasonType = "trending";
+                  reasonLabel = "Trending this week";
+                }
+                score += Math.min(followerCount, 50);
+              }
+
+              // If still zero score (very new account), keep curated label
+              if (score === 0) score = 10;
+
+              const profileImageUrl = formatProfileImageUrl(creator.profileImage) || null;
+
+              return {
+                score,
+                account: {
+                  _id: creator._id,
+                  id: creator._id,
+                  fullName: creator.fullName || creator.username || "User",
+                  username: creator.username,
+                  profileImageUrl,
+                  reasonType,
+                  reasonLabel,
+                },
+              };
+            });
+
+            // Sort by score descending and take top 6
+            suggestedAccounts = scoreAndAccounts
+              .sort((a, b) => b.score - a.score)
+              .slice(0, 6)
+              .map((item) => item.account);
+          }
+
+          suggestedData = {
+            events: followingEvents,
+            suggestedAccounts,
+          };
+        }
+      } catch (personalizationError) {
+        console.error("Error computing suggestedData in getApprovedEvents:", personalizationError);
+      }
+    }
+
     return res.status(200).json({
       success: true,
       count: formattedEvents.length,
       events: formattedEvents,
+      suggestedData,
     });
   } catch (error) {
     console.error("Error in getApprovedEvents:", error);
