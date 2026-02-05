@@ -48,6 +48,9 @@ const updateUserValidation = (req, res, next) => {
       email: joi.string().email(),
       password: joi.string().min(8).max(30),
       likedEventsVisibility: joi.string().valid("public", "private"),
+      followersVisibility: joi.string().valid("public", "private"),
+      followingVisibility: joi.string().valid("public", "private"),
+      bio: joi.string().max(200),
     }).min(1); // At least one field must be present
 
     const { error } = schema.validate(req.body);
@@ -113,6 +116,7 @@ const updateUserByAdminValidation = (req, res, next) => {
       password: joi.string().min(8).max(30),
       role: joi.string().valid("user", "admin", "organizer"),
       isVerified: joi.boolean(),
+      bio: joi.string().max(200),
     }).min(1); // At least one field must be present
 
     const { error } = schema.validate(req.body);

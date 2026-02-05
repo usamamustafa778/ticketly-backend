@@ -10,6 +10,12 @@ const UserSchema = new mongoose.Schema({
     trim: true,
     minlength: 3,
   },
+  bio: {
+    type: String,
+    trim: true,
+    maxlength: 200,
+    default: "",
+  },
   username: {
     type: String,
     trim: true,

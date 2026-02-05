@@ -143,6 +143,7 @@ const login = async (req, res) => {
           authProvider: user.authProvider,
           role: user.role,
           isVerified: user.isVerified,
+          bio: user.bio || "",
           createdEvents: user.createdEvents || [],
           joinedEvents: user.joinedEvents || [],
           likedEvents: user.likedEvents || [],
@@ -291,6 +292,7 @@ const verifyOtp = async (req, res) => {
         authProvider: user.authProvider,
         role: user.role,
         isVerified: user.isVerified,
+        bio: user.bio || "",
         createdEvents: user.createdEvents || [],
         joinedEvents: user.joinedEvents || [],
         likedEvents: user.likedEvents || [],
@@ -635,6 +637,7 @@ const getUserProfile = async (req, res) => {
         authProvider: user.authProvider,
         role: user.role,
         isVerified: user.isVerified,
+        bio: user.bio || "",
         profileImageUrl: profileImageUrl,
         coverImageUrl: coverImageUrl,
         createdEvents: formattedCreatedEvents,
@@ -862,6 +865,7 @@ const getUserProfileById = async (req, res) => {
         id: user._id,
         fullName: user.fullName || user.name,
         username: user.username,
+        bio: user.bio || "",
         profileImageUrl: profileImageUrl,
         companyName: user.companyName || null,
         coverImageUrl: coverImageUrl,
@@ -1008,7 +1012,7 @@ const getAllUsers = async (req, res) => {
 // ==================== UPDATE USER (Self Update) ====================
 const updateUser = async (req, res) => {
   try {
-    const { name, email, password, likedEventsVisibility, followersVisibility, followingVisibility } = req.body;
+    const { name, email, password, likedEventsVisibility, followersVisibility, followingVisibility, bio } = req.body;
     const updateData = {};
 
     // Only update fields that are provided
@@ -1055,6 +1059,11 @@ const updateUser = async (req, res) => {
       updateData.password = await bcrypt.hash(password, 10);
     }
 
+    if (bio !== undefined) {
+      const trimmed = String(bio).trim();
+      updateData.bio = trimmed.length > 200 ? trimmed.slice(0, 200) : trimmed;
+    }
+
     const updatedUser = await UserModel.findByIdAndUpdate(
       req.userId,
       { $set: updateData },
@@ -1081,6 +1090,7 @@ const updateUser = async (req, res) => {
         authProvider: updatedUser.authProvider,
         role: updatedUser.role,
         isVerified: updatedUser.isVerified,
+        bio: updatedUser.bio || "",
         profileImageUrl: profileImageUrl,
         createdEvents: updatedUser.createdEvents || [],
         joinedEvents: updatedUser.joinedEvents || [],
@@ -1101,7 +1111,7 @@ const updateUser = async (req, res) => {
 const updateUserByAdmin = async (req, res) => {
   try {
     const { userId } = req.params; // User ID to update
-    const { name, email, password, role, isVerified } = req.body;
+    const { name, email, password, role, isVerified, bio } = req.body;
     const updateData = {};
 
     // Check if target user exists
@@ -1158,6 +1168,11 @@ const updateUserByAdmin = async (req, res) => {
     if (password) {
       // Hash password if provided
       updateData.password = await bcrypt.hash(password, 10);
+    }
+
+    if (bio !== undefined) {
+      const trimmed = String(bio).trim();
+      updateData.bio = trimmed.length > 200 ? trimmed.slice(0, 200) : trimmed;
     }
 
     // Admin can update role
