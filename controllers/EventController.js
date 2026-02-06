@@ -505,7 +505,7 @@ const getEventById = async (req, res) => {
 
     const event = await EventModel.findById(id).populate(
       "createdBy",
-      "fullName username email role"
+      "fullName username email role profileImage"
     );
 
     if (!event) {
